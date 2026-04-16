@@ -268,7 +268,7 @@ GO
 
 -- ── 3.3 tbl_User (10 người dùng) ─────────────────────────────
 -- Password hash mẫu: BCrypt("Password@123") cost factor 10
-DECLARE @hash VARCHAR(256) = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+DECLARE @hash VARCHAR(256) = '$2b$10$nArSmPvSRhFpBkjY4KZV9.J3OcMgh.9rGeriL6C5LvbsW29cQaZda';
 
 INSERT INTO tbl_User (UserId, TenantId, RoleId, sFullName, sEmail, sPasswordHash, sPhone, iStatus)
 VALUES
