@@ -1,0 +1,1006 @@
+﻿CREATE DATABASE TrungNguyenCafeChain
+    COLLATE Vietnamese_CI_AS;
+GO
+
+USE TrungNguyenCafeChain;
+GO
+
+CREATE TABLE tbl_Tenant (
+    TenantId        UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    sTenantName     NVARCHAR(150)       NOT NULL,
+    sAddress        NVARCHAR(300)       NOT NULL,
+    sPhone          VARCHAR(15)         NOT NULL,
+    sEmail          VARCHAR(150)        NULL,
+    sFranchiseType  VARCHAR(20)         NOT NULL DEFAULT 'FRANCHISE'
+                    CONSTRAINT chk_FranchiseType CHECK (sFranchiseType IN ('HQ','FRANCHISE','COMPANY_OWNED')),
+    iStatus         TINYINT             NOT NULL DEFAULT 1
+                    CONSTRAINT chk_TenantStatus CHECK (iStatus IN (0,1)),  -- 0=Suspended, 1=Active
+    dCreatedAt      DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT pk_Tenant PRIMARY KEY (TenantId)
+);
+GO
+
+CREATE TABLE tbl_Role (
+    RoleId      UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    sRoleName   VARCHAR(30)         NOT NULL,
+    sDescription NVARCHAR(200)      NULL,
+    CONSTRAINT pk_Role PRIMARY KEY (RoleId),
+    CONSTRAINT uq_RoleName UNIQUE (sRoleName)
+);
+GO
+
+CREATE TABLE tbl_User (
+    UserId          UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    TenantId        UNIQUEIDENTIFIER    NOT NULL,
+    RoleId          UNIQUEIDENTIFIER    NOT NULL,
+    sFullName       NVARCHAR(100)       NOT NULL,
+    sEmail          VARCHAR(150)        NOT NULL,
+    sPasswordHash   VARCHAR(256)        NOT NULL,  -- BCrypt hash
+    sPhone          VARCHAR(15)         NULL,
+    iStatus         TINYINT             NOT NULL DEFAULT 1
+                    CONSTRAINT chk_UserStatus CHECK (iStatus IN (0,1)),  -- 0=Locked, 1=Active
+    dCreatedAt      DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    dLastLogin      DATETIME2           NULL,
+    CONSTRAINT pk_User PRIMARY KEY (UserId),
+    CONSTRAINT fk_User_Tenant FOREIGN KEY (TenantId) REFERENCES tbl_Tenant(TenantId),
+    CONSTRAINT fk_User_Role   FOREIGN KEY (RoleId)   REFERENCES tbl_Role(RoleId),
+    CONSTRAINT uq_UserEmail   UNIQUE (sEmail)
+);
+GO
+
+CREATE TABLE tbl_Customer (
+    CustomerId      UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    sFullName       NVARCHAR(100)       NOT NULL,
+    sPhone          VARCHAR(15)         NOT NULL,
+    sEmail          VARCHAR(150)        NULL,
+    iLoyaltyPoint   INT                 NOT NULL DEFAULT 0
+                    CONSTRAINT chk_LoyaltyPoint CHECK (iLoyaltyPoint >= 0),
+    sMemberLevel    VARCHAR(10)         NOT NULL DEFAULT 'BRONZE'
+                    CONSTRAINT chk_MemberLevel CHECK (sMemberLevel IN ('BRONZE','SILVER','GOLD','PLATINUM')),
+    dRegisteredAt   DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT pk_Customer PRIMARY KEY (CustomerId),
+    CONSTRAINT uq_CustomerPhone UNIQUE (sPhone)
+);
+GO
+
+CREATE TABLE tbl_Category (
+    CategoryId      UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    sCategoryName   NVARCHAR(80)        NOT NULL,
+    sDescription    NVARCHAR(200)       NULL,
+    CONSTRAINT pk_Category PRIMARY KEY (CategoryId)
+);
+GO
+
+CREATE TABLE tbl_Product (
+    ProductId       UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    TenantId        UNIQUEIDENTIFIER    NOT NULL,
+    CategoryId      UNIQUEIDENTIFIER    NULL,
+    sProductName    NVARCHAR(100)       NOT NULL,
+    sDescription    NVARCHAR(300)       NULL,
+    fPrice          DECIMAL(12,2)       NOT NULL
+                    CONSTRAINT chk_ProductPrice CHECK (fPrice >= 0),
+    iStatus         TINYINT             NOT NULL DEFAULT 1
+                    CONSTRAINT chk_ProductStatus CHECK (iStatus IN (0,1)),  -- 0=Ngừng bán, 1=Đang bán
+    dCreatedAt      DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT pk_Product PRIMARY KEY (ProductId),
+    CONSTRAINT fk_Product_Tenant   FOREIGN KEY (TenantId)   REFERENCES tbl_Tenant(TenantId),
+    CONSTRAINT fk_Product_Category FOREIGN KEY (CategoryId) REFERENCES tbl_Category(CategoryId)
+);
+GO
+
+CREATE TABLE tbl_Ingredient (
+    IngredientId        UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    TenantId            UNIQUEIDENTIFIER    NOT NULL,
+    sIngredientName     NVARCHAR(100)       NOT NULL,
+    sUnit               NVARCHAR(20)        NOT NULL,  -- gram, ml, chiếc, gói
+    fStockQuantity      DECIMAL(12,3)       NOT NULL DEFAULT 0
+                        CONSTRAINT chk_StockQty CHECK (fStockQuantity >= 0),
+    fAlertThreshold     DECIMAL(12,3)       NOT NULL DEFAULT 0
+                        CONSTRAINT chk_AlertThreshold CHECK (fAlertThreshold >= 0),
+    dUpdatedAt          DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT pk_Ingredient PRIMARY KEY (IngredientId),
+    CONSTRAINT fk_Ingredient_Tenant FOREIGN KEY (TenantId) REFERENCES tbl_Tenant(TenantId)
+);
+GO
+
+CREATE TABLE tbl_Recipe (
+    RecipeId        UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    ProductId       UNIQUEIDENTIFIER    NOT NULL,
+    IngredientId    UNIQUEIDENTIFIER    NOT NULL,
+    fAmountRequired DECIMAL(10,3)       NOT NULL
+                    CONSTRAINT chk_AmountRequired CHECK (fAmountRequired > 0),
+    sNote           NVARCHAR(100)       NULL,
+    CONSTRAINT pk_Recipe PRIMARY KEY (RecipeId),
+    CONSTRAINT fk_Recipe_Product    FOREIGN KEY (ProductId)    REFERENCES tbl_Product(ProductId),
+    CONSTRAINT fk_Recipe_Ingredient FOREIGN KEY (IngredientId) REFERENCES tbl_Ingredient(IngredientId),
+    CONSTRAINT uq_Recipe UNIQUE (ProductId, IngredientId)
+);
+GO
+
+CREATE TABLE tbl_Order (
+    OrderId         UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    TenantId        UNIQUEIDENTIFIER    NOT NULL,
+    UserId          UNIQUEIDENTIFIER    NOT NULL,
+    CustomerId      UNIQUEIDENTIFIER    NULL,
+    iStatus         TINYINT             NOT NULL DEFAULT 0
+                    CONSTRAINT chk_OrderStatus CHECK (iStatus IN (0,1,2,3,4)),
+                    -- 0=Pending, 1=Paid, 2=Preparing, 3=Ready, 4=Failed
+    fTotal          DECIMAL(12,2)       NOT NULL DEFAULT 0
+                    CONSTRAINT chk_OrderTotal CHECK (fTotal >= 0),
+    sPaymentMethod  VARCHAR(20)         NOT NULL DEFAULT 'CASH'
+                    CONSTRAINT chk_PaymentMethod CHECK (sPaymentMethod IN ('CASH','VNPAY','MOMO','ZALOPAY','CARD')),
+    sNote           NVARCHAR(200)       NULL,
+    dCreatedAt      DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    dPaidAt         DATETIME2           NULL,
+    CONSTRAINT pk_Order PRIMARY KEY (OrderId),
+    CONSTRAINT fk_Order_Tenant   FOREIGN KEY (TenantId)   REFERENCES tbl_Tenant(TenantId),
+    CONSTRAINT fk_Order_User     FOREIGN KEY (UserId)     REFERENCES tbl_User(UserId),
+    CONSTRAINT fk_Order_Customer FOREIGN KEY (CustomerId) REFERENCES tbl_Customer(CustomerId)
+);
+GO
+
+CREATE TABLE tbl_OrderItem (
+    OrderItemId     UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    OrderId         UNIQUEIDENTIFIER    NOT NULL,
+    ProductId       UNIQUEIDENTIFIER    NOT NULL,
+    iQuantity       INT                 NOT NULL
+                    CONSTRAINT chk_ItemQty CHECK (iQuantity > 0),
+    fUnitPrice      DECIMAL(12,2)       NOT NULL
+                    CONSTRAINT chk_UnitPrice CHECK (fUnitPrice >= 0),
+    CONSTRAINT pk_OrderItem PRIMARY KEY (OrderItemId),
+    CONSTRAINT fk_OrderItem_Order   FOREIGN KEY (OrderId)   REFERENCES tbl_Order(OrderId),
+    CONSTRAINT fk_OrderItem_Product FOREIGN KEY (ProductId) REFERENCES tbl_Product(ProductId)
+);
+GO
+CREATE TABLE tbl_StockHistory (
+    HistoryId       UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    TenantId        UNIQUEIDENTIFIER    NOT NULL,
+    IngredientId    UNIQUEIDENTIFIER    NOT NULL,
+    OrderId         UNIQUEIDENTIFIER    NULL,  -- NULL nếu nhập kho thủ công
+    fChangeAmount   DECIMAL(12,3)       NOT NULL,  -- âm=xuất, dương=nhập
+    sType           VARCHAR(10)         NOT NULL
+                    CONSTRAINT chk_StockType CHECK (sType IN ('DEDUCT','IMPORT','ADJUST')),
+    sNote           NVARCHAR(200)       NULL,
+    UserId          UNIQUEIDENTIFIER    NOT NULL,
+    dCreatedAt      DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT pk_StockHistory PRIMARY KEY (HistoryId),
+    CONSTRAINT fk_StockHistory_Tenant     FOREIGN KEY (TenantId)     REFERENCES tbl_Tenant(TenantId),
+    CONSTRAINT fk_StockHistory_Ingredient FOREIGN KEY (IngredientId) REFERENCES tbl_Ingredient(IngredientId),
+    CONSTRAINT fk_StockHistory_Order      FOREIGN KEY (OrderId)      REFERENCES tbl_Order(OrderId),
+    CONSTRAINT fk_StockHistory_User       FOREIGN KEY (UserId)       REFERENCES tbl_User(UserId)
+);
+GO
+
+CREATE TABLE tbl_LoyaltyHistory (
+    HistoryId       UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    CustomerId      UNIQUEIDENTIFIER    NOT NULL,
+    TenantId        UNIQUEIDENTIFIER    NOT NULL,
+    OrderId         UNIQUEIDENTIFIER    NULL,
+    iPointChange    INT                 NOT NULL,  -- dương=cộng, âm=trừ
+    sType           VARCHAR(10)         NOT NULL
+                    CONSTRAINT chk_LoyaltyType CHECK (sType IN ('EARN','REDEEM','ADJUST')),
+    sNote           NVARCHAR(200)       NULL,
+    dCreatedAt      DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT pk_LoyaltyHistory PRIMARY KEY (HistoryId),
+    CONSTRAINT fk_LoyaltyHistory_Customer FOREIGN KEY (CustomerId) REFERENCES tbl_Customer(CustomerId),
+    CONSTRAINT fk_LoyaltyHistory_Tenant   FOREIGN KEY (TenantId)   REFERENCES tbl_Tenant(TenantId),
+    CONSTRAINT fk_LoyaltyHistory_Order    FOREIGN KEY (OrderId)    REFERENCES tbl_Order(OrderId)
+);
+GO
+
+CREATE TABLE tbl_PaymentTransaction (
+    TransactionId       UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    OrderId             UNIQUEIDENTIFIER    NOT NULL,
+    TenantId            UNIQUEIDENTIFIER    NOT NULL,
+    sGateway            VARCHAR(20)         NOT NULL,  -- VNPAY, MOMO, ZALOPAY
+    sGatewayTransId     VARCHAR(100)        NULL,       -- mã giao dịch phía gateway
+    fAmount             DECIMAL(12,2)       NOT NULL,
+    iStatus             TINYINT             NOT NULL DEFAULT 0
+                        CONSTRAINT chk_TxStatus CHECK (iStatus IN (0,1,2,3)),
+                        -- 0=Pending, 1=Success, 2=Failed, 3=Timeout
+    sRawResponse        NVARCHAR(MAX)       NULL,       -- JSON response từ gateway
+    dCreatedAt          DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    dUpdatedAt          DATETIME2           NULL,
+    CONSTRAINT pk_PaymentTransaction PRIMARY KEY (TransactionId),
+    CONSTRAINT fk_PayTx_Order  FOREIGN KEY (OrderId)  REFERENCES tbl_Order(OrderId),
+    CONSTRAINT fk_PayTx_Tenant FOREIGN KEY (TenantId) REFERENCES tbl_Tenant(TenantId)
+);
+GO
+
+CREATE TABLE tbl_AuditLog (
+    LogId           UNIQUEIDENTIFIER    NOT NULL DEFAULT NEWSEQUENTIALID(),
+    TenantId        UNIQUEIDENTIFIER    NULL,  -- NULL = system-level action
+    UserId          UNIQUEIDENTIFIER    NULL,
+    sAction         NVARCHAR(100)       NOT NULL,
+    sEntityName     VARCHAR(50)         NULL,
+    sEntityId       VARCHAR(50)         NULL,
+    sOldValue       NVARCHAR(MAX)       NULL,
+    sNewValue       NVARCHAR(MAX)       NULL,
+    sIpAddress      VARCHAR(45)         NULL,
+    dCreatedAt      DATETIME2           NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT pk_AuditLog PRIMARY KEY (LogId)
+);
+GO
+
+
+CREATE INDEX idx_User_TenantId     ON tbl_User(TenantId);
+CREATE INDEX idx_Product_TenantId  ON tbl_Product(TenantId);
+CREATE INDEX idx_Ingredient_TenantId ON tbl_Ingredient(TenantId);
+CREATE INDEX idx_Order_TenantId    ON tbl_Order(TenantId);
+CREATE INDEX idx_Order_UserId      ON tbl_Order(UserId);
+CREATE INDEX idx_Order_Status      ON tbl_Order(iStatus);
+CREATE INDEX idx_Order_CreatedAt   ON tbl_Order(dCreatedAt DESC);
+CREATE INDEX idx_OrderItem_OrderId ON tbl_OrderItem(OrderId);
+CREATE INDEX idx_StockHistory_IngredientId ON tbl_StockHistory(IngredientId);
+CREATE INDEX idx_StockHistory_TenantId     ON tbl_StockHistory(TenantId);
+CREATE INDEX idx_LoyaltyHistory_CustomerId ON tbl_LoyaltyHistory(CustomerId);
+CREATE INDEX idx_PayTx_OrderId     ON tbl_PaymentTransaction(OrderId);
+GO
+
+-- Insert dữ liệu các bảng
+-- ── 3.1 tbl_Tenant (8 chi nhánh) ─────────────────────────────
+INSERT INTO tbl_Tenant (TenantId, sTenantName, sAddress, sPhone, sEmail, sFranchiseType, iStatus)
+VALUES
+-- HQ
+('00000000-0000-0000-0000-000000000001', N'Trung Nguyên Legend — Trụ sở chính HQ',       N'82 Cách Mạng Tháng Tám, Q.3, TP.HCM',            '02839308833', 'hq@trungnguyen.com.vn',         'HQ',             1),
+-- Company-owned
+('00000000-0000-0000-0000-000000000002', N'Trung Nguyên Legend Hàng Bài',                 N'57 Hàng Bài, Hoàn Kiếm, Hà Nội',                '02439388233', 'hangbai@trungnguyen.com.vn',    'COMPANY_OWNED',  1),
+('00000000-0000-0000-0000-000000000003', N'Trung Nguyên Legend Nguyễn Huệ',               N'1 Nguyễn Huệ, Q.1, TP.HCM',                     '02838211188', 'nguyenhue@trungnguyen.com.vn',  'COMPANY_OWNED',  1),
+-- Franchise
+('00000000-0000-0000-0000-000000000004', N'E-Coffee Lê Lợi — Đà Nẵng',                   N'72 Lê Lợi, Hải Châu, Đà Nẵng',                  '02362255678', 'danang01@ecoffee.vn',           'FRANCHISE',      1),
+('00000000-0000-0000-0000-000000000005', N'E-Coffee Trần Phú — Cần Thơ',                  N'45 Trần Phú, Ninh Kiều, Cần Thơ',               '02923811999', 'cantho01@ecoffee.vn',           'FRANCHISE',      1),
+('00000000-0000-0000-0000-000000000006', N'E-Coffee Lý Thái Tổ — Hải Phòng',              N'130 Lý Thái Tổ, Ngô Quyền, Hải Phòng',         '02253567432', 'haiphong01@ecoffee.vn',         'FRANCHISE',      1),
+('00000000-0000-0000-0000-000000000007', N'E-Coffee Phan Đình Phùng — Buôn Ma Thuột',     N'88 Phan Đình Phùng, TP. Buôn Ma Thuột, Đắk Lắk','02623955123', 'bmt01@ecoffee.vn',              'FRANCHISE',      1),
+('00000000-0000-0000-0000-000000000008', N'E-Coffee Nguyễn Văn Cừ — Nha Trang',           N'25 Nguyễn Văn Cừ, Lộc Thọ, Nha Trang',         '02583521456', 'nhatrang01@ecoffee.vn',         'FRANCHISE',      0);  -- Suspended
+GO
+
+-- ── 3.2 tbl_Role (6 roles) ───────────────────────────────────
+INSERT INTO tbl_Role (RoleId, sRoleName, sDescription)
+VALUES
+('10000000-0000-0000-0000-000000000001', 'SYSTEM_ADMIN',   N'Quản trị toàn hệ thống — quyền cao nhất'),
+('10000000-0000-0000-0000-000000000002', 'CHAIN_MANAGER',  N'Quản lý chuỗi — xem toàn bộ dữ liệu HQ'),
+('10000000-0000-0000-0000-000000000003', 'FRANCHISE_OWNER',N'Chủ nhượng quyền — quản lý chi nhánh mình'),
+('10000000-0000-0000-0000-000000000004', 'STORE_MANAGER',  N'Quản lý quán — báo cáo và nhân sự chi nhánh'),
+('10000000-0000-0000-0000-000000000005', 'STAFF_POS',      N'Nhân viên bán hàng — tạo và xử lý đơn hàng'),
+('10000000-0000-0000-0000-000000000006', 'BARISTA',        N'Nhân viên pha chế — nhận và hoàn tất đơn'),
+('10000000-0000-0000-0000-000000000007', 'WAREHOUSE',      N'Nhân viên kho — nhập và quản lý tồn kho');
+GO
+
+-- ── 3.3 tbl_User (10 người dùng) ─────────────────────────────
+-- Password hash mẫu: BCrypt("Password@123") cost factor 10
+DECLARE @hash VARCHAR(256) = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
+INSERT INTO tbl_User (UserId, TenantId, RoleId, sFullName, sEmail, sPasswordHash, sPhone, iStatus)
+VALUES
+('20000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001',N'Nguyễn Văn Admin',    'admin@trungnguyen.com.vn',      @hash,'0901111001',1),
+('20000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002',N'Trần Thị Chain Mgr',  'chainmgr@trungnguyen.com.vn',   @hash,'0901111002',1),
+('20000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000004',N'Lê Minh Quản Lý HN',  'manager.hn@trungnguyen.com.vn', @hash,'0902222001',1),
+('20000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000005',N'Phạm Thị Thu Hà',     'staff.hn01@trungnguyen.com.vn', @hash,'0902222002',1),
+('20000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000006',N'Hoàng Văn Barista HN',  'barista.hn01@trungnguyen.com.vn',@hash,'0902222003',1),
+('20000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000004',N'Võ Thị Quản Lý HCM',  'manager.hcm@trungnguyen.com.vn',@hash,'0903333001',1),
+('20000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000005',N'Ngô Hoàng Nhân Viên', 'staff.hcm01@trungnguyen.com.vn',@hash,'0903333002',1),
+('20000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000007',N'Đặng Văn Kho HCM',    'warehouse.hcm@trungnguyen.com.vn',@hash,'0903333003',1),
+('20000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000003',N'Bùi Quang Franchise DN',  'owner.dn@ecoffee.vn',          @hash,'0904444001',1),
+('20000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000005',N'Trương Thị Nhân Viên DN','staff.dn01@ecoffee.vn',        @hash,'0904444002',1);
+GO
+
+-- ── 3.4 tbl_Customer (10 khách hàng) ─────────────────────────
+INSERT INTO tbl_Customer (CustomerId, sFullName, sPhone, sEmail, iLoyaltyPoint, sMemberLevel, dRegisteredAt)
+VALUES
+('30000000-0000-0000-0000-000000000001', N'Nguyễn Thị Hoa',      '0911222333', 'hoa.nguyen@gmail.com',    850,  'SILVER',   '2025-01-15 09:00:00'),
+('30000000-0000-0000-0000-000000000002', N'Trần Văn Bình',        '0922333444', 'binh.tran@gmail.com',     2400, 'GOLD',     '2024-11-20 10:30:00'),
+('30000000-0000-0000-0000-000000000003', N'Lê Thị Cúc',           '0933444555', 'cuc.le@yahoo.com',        120,  'BRONZE',   '2025-03-01 08:15:00'),
+('30000000-0000-0000-0000-000000000004', N'Phạm Minh Đức',        '0944555666', 'duc.pham@outlook.com',    5500, 'PLATINUM', '2024-08-10 11:00:00'),
+('30000000-0000-0000-0000-000000000005', N'Hoàng Thị Lan',        '0955666777', 'lan.hoang@gmail.com',     310,  'BRONZE',   '2025-02-14 14:20:00'),
+('30000000-0000-0000-0000-000000000006', N'Vũ Quốc Hùng',         '0966777888', 'hung.vu@gmail.com',       1200, 'SILVER',   '2024-12-05 16:45:00'),
+('30000000-0000-0000-0000-000000000007', N'Đỗ Thị Mỹ Linh',       '0977888999', 'mylinh.do@gmail.com',     680,  'SILVER',   '2025-01-08 08:00:00'),
+('30000000-0000-0000-0000-000000000008', N'Bùi Thanh Tùng',       '0988999000', 'tung.bui@gmail.com',      45,   'BRONZE',   '2025-04-01 10:10:00'),
+('30000000-0000-0000-0000-000000000009', N'Ngô Thị Thu Hương',    '0912345678', 'thuhuong.ngo@gmail.com',  3100, 'GOLD',     '2024-09-22 09:30:00'),
+('30000000-0000-0000-0000-000000000010', N'Cao Văn Khoa',         '0923456789', 'khoa.cao@gmail.com',      780,  'SILVER',   '2025-01-30 13:00:00');
+GO
+
+-- ── 3.5 tbl_Category (7 danh mục) ────────────────────────────
+INSERT INTO tbl_Category (CategoryId, sCategoryName, sDescription)
+VALUES
+('40000000-0000-0000-0000-000000000001', N'Cà phê đen',       N'Các loại cà phê phin, espresso, Americano'),
+('40000000-0000-0000-0000-000000000002', N'Cà phê sữa',       N'Bạc xỉu, cà phê sữa đá, cappuccino, latte'),
+('40000000-0000-0000-0000-000000000003', N'Trà và trà sữa',   N'Trà đào, trà chanh, trà sữa trân châu'),
+('40000000-0000-0000-0000-000000000004', N'Sinh tố & Nước ép', N'Sinh tố bơ, xoài, dâu; nước ép tươi'),
+('40000000-0000-0000-0000-000000000005', N'Bánh và snack',    N'Bánh mì, croissant, bánh quy, sandwich'),
+('40000000-0000-0000-0000-000000000006', N'Đặc sản Trung Nguyên', N'Blend đặc biệt, cà phê chồn, gói quà'),
+('40000000-0000-0000-0000-000000000007', N'Nước đóng chai',   N'Nước suối, nước ngọt, nước tăng lực');
+GO
+
+-- ── 3.6 tbl_Product (50+ sản phẩm cho 3 chi nhánh chính) ─────
+-- Chi nhánh HQ (001)
+INSERT INTO tbl_Product (ProductId, TenantId, CategoryId, sProductName, fPrice, iStatus)
+VALUES
+('50000000-0000-0000-0001-000000000001','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001',N'Cà phê đen đá',           29000, 1),
+('50000000-0000-0000-0001-000000000002','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001',N'Cà phê đen nóng',          25000, 1),
+('50000000-0000-0000-0001-000000000003','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000002',N'Cà phê sữa đá',            35000, 1),
+('50000000-0000-0000-0001-000000000004','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000002',N'Bạc xỉu đá',               38000, 1),
+('50000000-0000-0000-0001-000000000005','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000002',N'Cappuccino',               55000, 1),
+('50000000-0000-0000-0001-000000000006','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000002',N'Caffe Latte',              58000, 1),
+('50000000-0000-0000-0001-000000000007','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000006',N'Legend Blend No.1',        75000, 1),
+('50000000-0000-0000-0001-000000000008','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000006',N'Weasel Coffee (Cà phê chồn)',250000,1),
+('50000000-0000-0000-0001-000000000009','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000003',N'Trà đào cam sả',           45000, 1),
+('50000000-0000-0000-0001-000000000010','00000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000005',N'Croissant bơ',             35000, 1);
+
+-- Chi nhánh Hàng Bài HN (002)
+INSERT INTO tbl_Product (ProductId, TenantId, CategoryId, sProductName, fPrice, iStatus)
+VALUES
+('50000000-0000-0000-0002-000000000001','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000001',N'Cà phê đen đá',           29000, 1),
+('50000000-0000-0000-0002-000000000002','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000001',N'Cà phê đen nóng',          25000, 1),
+('50000000-0000-0000-0002-000000000003','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000001',N'Espresso đơn',             35000, 1),
+('50000000-0000-0000-0002-000000000004','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000001',N'Americano',               40000, 1),
+('50000000-0000-0000-0002-000000000005','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000002',N'Cà phê sữa đá',            35000, 1),
+('50000000-0000-0000-0002-000000000006','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000002',N'Bạc xỉu đá',               38000, 1),
+('50000000-0000-0000-0002-000000000007','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000002',N'Cappuccino',               55000, 1),
+('50000000-0000-0000-0002-000000000008','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000002',N'Caffe Latte',              58000, 1),
+('50000000-0000-0000-0002-000000000009','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000002',N'Flat White',               60000, 1),
+('50000000-0000-0000-0002-000000000010','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000003',N'Trà đào cam sả',           45000, 1),
+('50000000-0000-0000-0002-000000000011','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000003',N'Trà chanh mật ong',        42000, 1),
+('50000000-0000-0000-0002-000000000012','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000003',N'Trà sữa trân châu đen',    52000, 1),
+('50000000-0000-0000-0002-000000000013','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000004',N'Sinh tố bơ sữa',           65000, 1),
+('50000000-0000-0000-0002-000000000014','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000004',N'Sinh tố xoài',             55000, 1),
+('50000000-0000-0000-0002-000000000015','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000005',N'Croissant bơ',             35000, 1),
+('50000000-0000-0000-0002-000000000016','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000005',N'Bánh mì que bơ tỏi',      28000, 1),
+('50000000-0000-0000-0002-000000000017','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000006',N'Legend Blend No.1',        75000, 1),
+('50000000-0000-0000-0002-000000000018','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000006',N'Creative Blend No.8',      85000, 1),
+('50000000-0000-0000-0002-000000000019','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000007',N'Nước suối Aquafina',       15000, 1),
+('50000000-0000-0000-0002-000000000020','00000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000007',N'Pepsi lon',               20000, 1);
+
+-- Chi nhánh Nguyễn Huệ HCM (003)
+INSERT INTO tbl_Product (ProductId, TenantId, CategoryId, sProductName, fPrice, iStatus)
+VALUES
+('50000000-0000-0000-0003-000000000001','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000001',N'Cà phê đen đá',           29000, 1),
+('50000000-0000-0000-0003-000000000002','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000001',N'Cà phê đen nóng',          25000, 1),
+('50000000-0000-0000-0003-000000000003','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000001',N'Espresso đơn',             35000, 1),
+('50000000-0000-0000-0003-000000000004','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000001',N'Americano',               40000, 1),
+('50000000-0000-0000-0003-000000000005','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000002',N'Cà phê sữa đá',            35000, 1),
+('50000000-0000-0000-0003-000000000006','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000002',N'Bạc xỉu đá',               38000, 1),
+('50000000-0000-0000-0003-000000000007','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000002',N'Cappuccino',               55000, 1),
+('50000000-0000-0000-0003-000000000008','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000002',N'Caffe Latte',              58000, 1),
+('50000000-0000-0000-0003-000000000009','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000002',N'Cold Brew sữa',            65000, 1),
+('50000000-0000-0000-0003-000000000010','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000003',N'Trà đào cam sả',           45000, 1),
+('50000000-0000-0000-0003-000000000011','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000003',N'Trà vải lài',              48000, 1),
+('50000000-0000-0000-0003-000000000012','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000004',N'Sinh tố bơ sữa',           65000, 1),
+('50000000-0000-0000-0003-000000000013','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000004',N'Sinh tố dâu tây',          60000, 1),
+('50000000-0000-0000-0003-000000000014','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000005',N'Bánh tiramisu',            65000, 1),
+('50000000-0000-0000-0003-000000000015','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000006',N'Weasel Coffee (Cà phê chồn)',250000,1),
+('50000000-0000-0000-0003-000000000016','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000006',N'Legend Blend No.1',        75000, 1),
+('50000000-0000-0000-0003-000000000017','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000006',N'Passiona Blend',           80000, 1),
+('50000000-0000-0000-0003-000000000018','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000006',N'House Blend',              70000, 1),
+('50000000-0000-0000-0003-000000000019','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000007',N'Nước suối Aquafina',       15000, 1),
+('50000000-0000-0000-0003-000000000020','00000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000007',N'Nước cam ép tươi',         45000, 1);
+GO
+
+-- ── 3.7 tbl_Ingredient (nguyên liệu cho 2 chi nhánh) ─────────
+-- Chi nhánh Hàng Bài HN
+INSERT INTO tbl_Ingredient (IngredientId, TenantId, sIngredientName, sUnit, fStockQuantity, fAlertThreshold)
+VALUES
+('60000000-0000-0000-0002-000000000001','00000000-0000-0000-0000-000000000002',N'Cà phê Robusta xay sẵn',  'gram',    5200.000, 1000.000),
+('60000000-0000-0000-0002-000000000002','00000000-0000-0000-0000-000000000002',N'Cà phê Arabica xay sẵn',  'gram',    3800.000,  800.000),
+('60000000-0000-0000-0002-000000000003','00000000-0000-0000-0000-000000000002',N'Sữa tươi không đường',    'ml',     18000.000, 3000.000),
+('60000000-0000-0000-0002-000000000004','00000000-0000-0000-0000-000000000002',N'Sữa đặc Ông Thọ',         'gram',    4500.000,  800.000),
+('60000000-0000-0000-0002-000000000005','00000000-0000-0000-0000-000000000002',N'Đường cát trắng',          'gram',    8000.000, 1500.000),
+('60000000-0000-0000-0002-000000000006','00000000-0000-0000-0000-000000000002',N'Đá viên',                  'gram',   50000.000,10000.000),
+('60000000-0000-0000-0002-000000000007','00000000-0000-0000-0000-000000000002',N'Túi trà đào',             'gói',      350.000,   80.000),
+('60000000-0000-0000-0002-000000000008','00000000-0000-0000-0000-000000000002',N'Trân châu đen (khô)',      'gram',    2500.000,  500.000),
+('60000000-0000-0000-0002-000000000009','00000000-0000-0000-0000-000000000002',N'Whipping cream',           'ml',      4000.000,  800.000),
+('60000000-0000-0000-0002-000000000010','00000000-0000-0000-0000-000000000002',N'Syrup caramel',            'ml',      2000.000,  400.000),
+('60000000-0000-0000-0002-000000000011','00000000-0000-0000-0000-000000000002',N'Bột cacao',                'gram',    1200.000,  300.000),
+('60000000-0000-0000-0002-000000000012','00000000-0000-0000-0000-000000000002',N'Ly nhựa 500ml',           'chiếc',   1500.000,  300.000),
+('60000000-0000-0000-0002-000000000013','00000000-0000-0000-0000-000000000002',N'Ống hút',                 'chiếc',   2000.000,  500.000),
+('60000000-0000-0000-0002-000000000014','00000000-0000-0000-0000-000000000002',N'Bơ tươi Anchor',          'gram',    3000.000,  500.000),
+('60000000-0000-0000-0002-000000000015','00000000-0000-0000-0000-000000000002',N'Quả bơ',                  'gram',    5000.000, 1000.000);
+
+-- Chi nhánh Nguyễn Huệ HCM
+INSERT INTO tbl_Ingredient (IngredientId, TenantId, sIngredientName, sUnit, fStockQuantity, fAlertThreshold)
+VALUES
+('60000000-0000-0000-0003-000000000001','00000000-0000-0000-0000-000000000003',N'Cà phê Robusta xay sẵn',  'gram',    7500.000, 1500.000),
+('60000000-0000-0000-0003-000000000002','00000000-0000-0000-0000-000000000003',N'Cà phê Arabica xay sẵn',  'gram',    4200.000,  900.000),
+('60000000-0000-0000-0003-000000000003','00000000-0000-0000-0000-000000000003',N'Sữa tươi không đường',    'ml',     25000.000, 4000.000),
+('60000000-0000-0000-0003-000000000004','00000000-0000-0000-0000-000000000003',N'Sữa đặc Ông Thọ',         'gram',    6000.000, 1000.000),
+('60000000-0000-0000-0003-000000000005','00000000-0000-0000-0000-000000000003',N'Đường cát trắng',          'gram',   10000.000, 2000.000),
+('60000000-0000-0000-0003-000000000006','00000000-0000-0000-0000-000000000003',N'Đá viên',                  'gram',   80000.000,15000.000),
+('60000000-0000-0000-0003-000000000007','00000000-0000-0000-0000-000000000003',N'Túi trà đào',             'gói',      500.000,  100.000),
+('60000000-0000-0000-0003-000000000008','00000000-0000-0000-0000-000000000003',N'Whipping cream',           'ml',      6000.000, 1200.000),
+('60000000-0000-0000-0003-000000000009','00000000-0000-0000-0000-000000000003',N'Syrup caramel',            'ml',      3000.000,  600.000),
+('60000000-0000-0000-0003-000000000010','00000000-0000-0000-0000-000000000003',N'Dâu tây tươi',            'gram',    4000.000,  800.000),
+('60000000-0000-0000-0003-000000000011','00000000-0000-0000-0000-000000000003',N'Quả bơ',                  'gram',    8000.000, 1500.000),
+('60000000-0000-0000-0003-000000000012','00000000-0000-0000-0000-000000000003',N'Ly nhựa 500ml',           'chiếc',   2000.000,  400.000),
+('60000000-0000-0000-0003-000000000013','00000000-0000-0000-0000-000000000003',N'Ống hút',                 'chiếc',   3000.000,  600.000),
+('60000000-0000-0000-0003-000000000014','00000000-0000-0000-0000-000000000003',N'Bột tiramisu',            'gram',    2000.000,  400.000),
+('60000000-0000-0000-0003-000000000015','00000000-0000-0000-0000-000000000003',N'Cà phê chồn rang sẵn',    'gram',     500.000,  100.000);
+GO
+
+-- ── 3.8 tbl_Recipe (định mức nguyên liệu) ────────────────────
+-- HN — Cà phê đen đá (001-001)
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired, sNote) VALUES
+('50000000-0000-0000-0002-000000000001','60000000-0000-0000-0002-000000000001', 18.000, N'18g cà phê phin'),
+('50000000-0000-0000-0002-000000000001','60000000-0000-0000-0002-000000000005',  5.000, N'1 thìa cà phê đường'),
+('50000000-0000-0000-0002-000000000001','60000000-0000-0000-0002-000000000006',200.000, N'200g đá viên');
+
+-- HN — Cà phê sữa đá
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired) VALUES
+('50000000-0000-0000-0002-000000000005','60000000-0000-0000-0002-000000000001', 18.000),
+('50000000-0000-0000-0002-000000000005','60000000-0000-0000-0002-000000000004', 30.000),
+('50000000-0000-0000-0002-000000000005','60000000-0000-0000-0002-000000000006',200.000);
+
+-- HN — Bạc xỉu
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired) VALUES
+('50000000-0000-0000-0002-000000000006','60000000-0000-0000-0002-000000000001', 12.000),
+('50000000-0000-0000-0002-000000000006','60000000-0000-0000-0002-000000000003',150.000),
+('50000000-0000-0000-0002-000000000006','60000000-0000-0000-0002-000000000004', 20.000),
+('50000000-0000-0000-0002-000000000006','60000000-0000-0000-0002-000000000006',200.000);
+
+-- HN — Cappuccino
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired) VALUES
+('50000000-0000-0000-0002-000000000007','60000000-0000-0000-0002-000000000002',  8.000),
+('50000000-0000-0000-0002-000000000007','60000000-0000-0000-0002-000000000003',120.000),
+('50000000-0000-0000-0002-000000000007','60000000-0000-0000-0002-000000000009', 30.000),
+('50000000-0000-0000-0002-000000000007','60000000-0000-0000-0002-000000000011',  3.000);
+
+-- HN — Trà đào
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired) VALUES
+('50000000-0000-0000-0002-000000000010','60000000-0000-0000-0002-000000000007',  1.000),
+('50000000-0000-0000-0002-000000000010','60000000-0000-0000-0002-000000000005', 20.000),
+('50000000-0000-0000-0002-000000000010','60000000-0000-0000-0002-000000000006',200.000);
+
+-- HN — Trà sữa trân châu
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired) VALUES
+('50000000-0000-0000-0002-000000000012','60000000-0000-0000-0002-000000000007',  1.000),
+('50000000-0000-0000-0002-000000000012','60000000-0000-0000-0002-000000000003',200.000),
+('50000000-0000-0000-0002-000000000012','60000000-0000-0000-0002-000000000008', 50.000),
+('50000000-0000-0000-0002-000000000012','60000000-0000-0000-0002-000000000005', 25.000);
+
+-- HCM — Cà phê sữa đá
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired) VALUES
+('50000000-0000-0000-0003-000000000005','60000000-0000-0000-0003-000000000001', 18.000),
+('50000000-0000-0000-0003-000000000005','60000000-0000-0000-0003-000000000004', 30.000),
+('50000000-0000-0000-0003-000000000005','60000000-0000-0000-0003-000000000006',200.000);
+
+-- HCM — Cappuccino
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired) VALUES
+('50000000-0000-0000-0003-000000000007','60000000-0000-0000-0003-000000000002',  8.000),
+('50000000-0000-0000-0003-000000000007','60000000-0000-0000-0003-000000000003',120.000),
+('50000000-0000-0000-0003-000000000007','60000000-0000-0000-0003-000000000008', 30.000);
+
+-- HCM — Sinh tố bơ
+INSERT INTO tbl_Recipe (ProductId, IngredientId, fAmountRequired) VALUES
+('50000000-0000-0000-0003-000000000012','60000000-0000-0000-0003-000000000011',150.000),
+('50000000-0000-0000-0003-000000000012','60000000-0000-0000-0003-000000000003',100.000),
+('50000000-0000-0000-0003-000000000012','60000000-0000-0000-0003-000000000004', 25.000),
+('50000000-0000-0000-0003-000000000012','60000000-0000-0000-0003-000000000006',150.000);
+GO
+
+-- ── 3.9 tbl_Order + tbl_OrderItem (100 đơn hàng) ──────────────
+-- Sử dụng bảng tạm để insert hàng loạt gọn hơn
+-- Chi nhánh HN (002) — 60 đơn
+
+DECLARE @uid_hn_staff  UNIQUEIDENTIFIER = '20000000-0000-0000-0000-000000000004';
+DECLARE @uid_hn_mgr    UNIQUEIDENTIFIER = '20000000-0000-0000-0000-000000000003';
+DECLARE @tid_hn        UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000002';
+DECLARE @tid_hcm       UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000003';
+DECLARE @uid_hcm_staff UNIQUEIDENTIFIER = '20000000-0000-0000-0000-000000000007';
+
+-- Tạo 60 đơn cho HN bằng loop
+DECLARE @i INT = 1;
+DECLARE @orderId UNIQUEIDENTIFIER;
+DECLARE @baseDate DATETIME2 = '2026-01-01 08:00:00';
+DECLARE @cid UNIQUEIDENTIFIER;
+DECLARE @pm VARCHAR(20);
+DECLARE @tot DECIMAL(12,2);
+
+WHILE @i <= 60
+BEGIN
+    SET @orderId = NEWID();
+
+    -- Xoay khách hàng
+    SET @cid = CASE (@i % 5)
+        WHEN 0 THEN '30000000-0000-0000-0000-000000000001'
+        WHEN 1 THEN '30000000-0000-0000-0000-000000000002'
+        WHEN 2 THEN '30000000-0000-0000-0000-000000000006'
+        WHEN 3 THEN NULL
+        ELSE        '30000000-0000-0000-0000-000000000007'
+    END;
+
+    -- Xoay phương thức thanh toán
+    SET @pm = CASE (@i % 4)
+        WHEN 0 THEN 'CASH'
+        WHEN 1 THEN 'VNPAY'
+        WHEN 2 THEN 'MOMO'
+        ELSE        'CASH'
+    END;
+
+    -- Tổng tiền xoay theo từng nhóm 10
+    SET @tot = CASE
+        WHEN @i % 10 IN (1,2)   THEN  64000.00
+        WHEN @i % 10 IN (3,4)   THEN  93000.00
+        WHEN @i % 10 IN (5,6)   THEN 110000.00
+        WHEN @i % 10 IN (7,8)   THEN  87000.00
+        ELSE                          145000.00
+    END;
+
+    INSERT INTO tbl_Order (OrderId, TenantId, UserId, CustomerId, iStatus, fTotal, sPaymentMethod, dCreatedAt, dPaidAt)
+    VALUES (
+        @orderId,
+        @tid_hn,
+        @uid_hn_staff,
+        @cid,
+        1,  -- Paid
+        @tot,
+        @pm,
+        DATEADD(HOUR, (@i % 12) + 7, DATEADD(DAY, @i - 1, @baseDate)),
+        DATEADD(MINUTE, 2, DATEADD(HOUR, (@i % 12) + 7, DATEADD(DAY, @i - 1, @baseDate)))
+    );
+
+    -- Chi tiết đơn hàng (2 sản phẩm xoay vòng)
+    INSERT INTO tbl_OrderItem (OrderId, ProductId, iQuantity, fUnitPrice)
+    VALUES (
+        @orderId,
+        CASE (@i % 4)
+            WHEN 0 THEN '50000000-0000-0000-0002-000000000001'  -- CF đen đá
+            WHEN 1 THEN '50000000-0000-0000-0002-000000000005'  -- CF sữa đá
+            WHEN 2 THEN '50000000-0000-0000-0002-000000000007'  -- Cappuccino
+            ELSE        '50000000-0000-0000-0002-000000000010'  -- Trà đào
+        END,
+        CASE WHEN @i % 3 = 0 THEN 2 ELSE 1 END,
+        CASE (@i % 4)
+            WHEN 0 THEN 29000.00
+            WHEN 1 THEN 35000.00
+            WHEN 2 THEN 55000.00
+            ELSE        45000.00
+        END
+    );
+
+    IF @i % 2 = 0
+    BEGIN
+        INSERT INTO tbl_OrderItem (OrderId, ProductId, iQuantity, fUnitPrice)
+        VALUES (
+            @orderId,
+            CASE (@i % 3)
+                WHEN 0 THEN '50000000-0000-0000-0002-000000000015' -- Croissant
+                WHEN 1 THEN '50000000-0000-0000-0002-000000000019' -- Nước suối
+                ELSE        '50000000-0000-0000-0002-000000000006' -- Bạc xỉu
+            END,
+            1,
+            CASE (@i % 3)
+                WHEN 0 THEN 35000.00
+                WHEN 1 THEN 15000.00
+                ELSE        38000.00
+            END
+        );
+    END;
+
+    SET @i = @i + 1;
+END;
+
+-- Chi nhánh HCM (003) — 40 đơn
+SET @i = 1;
+WHILE @i <= 40
+BEGIN
+    SET @orderId = NEWID();
+
+    SET @cid = CASE (@i % 5)
+        WHEN 0 THEN '30000000-0000-0000-0000-000000000003'
+        WHEN 1 THEN '30000000-0000-0000-0000-000000000004'
+        WHEN 2 THEN '30000000-0000-0000-0000-000000000009'
+        WHEN 3 THEN NULL
+        ELSE        '30000000-0000-0000-0000-000000000005'
+    END;
+
+    SET @pm = CASE (@i % 3)
+        WHEN 0 THEN 'CASH'
+        WHEN 1 THEN 'MOMO'
+        ELSE        'ZALOPAY'
+    END;
+
+    SET @tot = CASE
+        WHEN @i % 5 = 0 THEN 250000.00  -- weasel coffee
+        WHEN @i % 4 = 0 THEN  93000.00
+        WHEN @i % 3 = 0 THEN 123000.00
+        ELSE                   80000.00
+    END;
+
+    INSERT INTO tbl_Order (OrderId, TenantId, UserId, CustomerId, iStatus, fTotal, sPaymentMethod, dCreatedAt, dPaidAt)
+    VALUES (
+        @orderId,
+        @tid_hcm,
+        @uid_hcm_staff,
+        @cid,
+        1,
+        @tot,
+        @pm,
+        DATEADD(HOUR, (@i % 14) + 7, DATEADD(DAY, @i - 1, @baseDate)),
+        DATEADD(MINUTE, 3, DATEADD(HOUR, (@i % 14) + 7, DATEADD(DAY, @i - 1, @baseDate)))
+    );
+
+    INSERT INTO tbl_OrderItem (OrderId, ProductId, iQuantity, fUnitPrice)
+    VALUES (
+        @orderId,
+        CASE (@i % 5)
+            WHEN 0 THEN '50000000-0000-0000-0003-000000000015'  -- Weasel
+            WHEN 1 THEN '50000000-0000-0000-0003-000000000005'  -- CF sữa đá
+            WHEN 2 THEN '50000000-0000-0000-0003-000000000007'  -- Cappuccino
+            WHEN 3 THEN '50000000-0000-0000-0003-000000000010'  -- Trà đào
+            ELSE        '50000000-0000-0000-0003-000000000012'  -- Sinh tố bơ
+        END,
+        1,
+        CASE (@i % 5)
+            WHEN 0 THEN 250000.00
+            WHEN 1 THEN  35000.00
+            WHEN 2 THEN  55000.00
+            WHEN 3 THEN  45000.00
+            ELSE          65000.00
+        END
+    );
+
+    SET @i = @i + 1;
+END;
+GO
+
+-- ── 3.10 tbl_StockHistory (lịch sử kho — 80 bản ghi) ─────────
+DECLARE @ingList TABLE (IngId UNIQUEIDENTIFIER, Tid UNIQUEIDENTIFIER);
+INSERT INTO @ingList VALUES
+('60000000-0000-0000-0002-000000000001','00000000-0000-0000-0000-000000000002'),
+('60000000-0000-0000-0002-000000000002','00000000-0000-0000-0000-000000000002'),
+('60000000-0000-0000-0002-000000000003','00000000-0000-0000-0000-000000000002'),
+('60000000-0000-0000-0002-000000000004','00000000-0000-0000-0000-000000000002'),
+('60000000-0000-0000-0002-000000000005','00000000-0000-0000-0000-000000000002'),
+('60000000-0000-0000-0002-000000000006','00000000-0000-0000-0000-000000000002'),
+('60000000-0000-0000-0003-000000000001','00000000-0000-0000-0000-000000000003'),
+('60000000-0000-0000-0003-000000000003','00000000-0000-0000-0000-000000000003'),
+('60000000-0000-0000-0003-000000000005','00000000-0000-0000-0000-000000000003'),
+('60000000-0000-0000-0003-000000000006','00000000-0000-0000-0000-000000000003');
+
+DECLARE @j INT = 1;
+DECLARE @ingId  UNIQUEIDENTIFIER;
+DECLARE @tenId  UNIQUEIDENTIFIER;
+DECLARE @ingRow INT;
+
+WHILE @j <= 80
+BEGIN
+    SET @ingRow = ((@j - 1) % 10) + 1;
+
+    SELECT @ingId = IngId, @tenId = Tid
+    FROM (
+        SELECT IngId, Tid, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS rn
+        FROM @ingList
+    ) x WHERE rn = @ingRow;
+
+    INSERT INTO tbl_StockHistory
+        (TenantId, IngredientId, OrderId, fChangeAmount, sType, sNote, UserId, dCreatedAt)
+    VALUES (
+        @tenId,
+        @ingId,
+        NULL,
+        CASE
+            WHEN @j % 5 = 0 THEN  5000.000   -- nhập kho lớn
+            WHEN @j % 3 = 0 THEN  2000.000   -- nhập kho thường
+            WHEN @j % 2 = 0 THEN   -18.000   -- trừ kho mỗi ly CF
+            ELSE                    -30.000   -- trừ kho sữa
+        END,
+        CASE
+            WHEN @j % 5 = 0 THEN 'IMPORT'
+            WHEN @j % 3 = 0 THEN 'IMPORT'
+            ELSE                  'DEDUCT'
+        END,
+        CASE
+            WHEN @j % 5 = 0 THEN N'Nhập kho định kỳ tuần ' + CAST((@j/5)+1 AS NVARCHAR)
+            WHEN @j % 3 = 0 THEN N'Nhập bổ sung nguyên liệu'
+            ELSE                  N'Trừ kho tự động theo đơn'
+        END,
+        CASE WHEN @tenId = '00000000-0000-0000-0000-000000000002'
+             THEN '20000000-0000-0000-0000-000000000008'
+             ELSE '20000000-0000-0000-0000-000000000008'
+        END,
+        DATEADD(HOUR, @j % 16 + 7, DATEADD(DAY, @j - 1, '2026-01-01'))
+    );
+
+    SET @j = @j + 1;
+END;
+GO
+
+-- ── 3.11 tbl_LoyaltyHistory (60 bản ghi) ─────────────────────
+DECLARE @k INT = 1;
+DECLARE @loyaltyCustomers TABLE (CustId UNIQUEIDENTIFIER);
+INSERT INTO @loyaltyCustomers VALUES
+('30000000-0000-0000-0000-000000000001'),
+('30000000-0000-0000-0000-000000000002'),
+('30000000-0000-0000-0000-000000000004'),
+('30000000-0000-0000-0000-000000000006'),
+('30000000-0000-0000-0000-000000000007'),
+('30000000-0000-0000-0000-000000000009');
+
+WHILE @k <= 60
+BEGIN
+    DECLARE @custId2 UNIQUEIDENTIFIER;
+    DECLARE @custRow INT = ((@k - 1) % 6) + 1;
+
+    SELECT @custId2 = CustId
+    FROM (
+        SELECT CustId, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS rn
+        FROM @loyaltyCustomers
+    ) x WHERE rn = @custRow;
+
+    INSERT INTO tbl_LoyaltyHistory
+        (CustomerId, TenantId, OrderId, iPointChange, sType, sNote, dCreatedAt)
+    VALUES (
+        @custId2,
+        CASE WHEN @k % 2 = 0
+             THEN '00000000-0000-0000-0000-000000000002'
+             ELSE '00000000-0000-0000-0000-000000000003'
+        END,
+        NULL,
+        CASE
+            WHEN @k % 7 = 0 THEN -200     -- đổi điểm
+            WHEN @k % 4 = 0 THEN  150     -- tích nhiều
+            ELSE                    50    -- tích thường 1 ly
+        END,
+        CASE WHEN @k % 7 = 0 THEN 'REDEEM' ELSE 'EARN' END,
+        CASE
+            WHEN @k % 7 = 0 THEN N'Đổi điểm lấy ly cà phê miễn phí'
+            WHEN @k % 4 = 0 THEN N'Tích điểm hóa đơn > 100.000đ'
+            ELSE                  N'Tích điểm 1 ly cà phê tiêu chuẩn'
+        END,
+        DATEADD(HOUR, @k % 14 + 7, DATEADD(DAY, @k - 1, '2026-01-01'))
+    );
+
+    SET @k = @k + 1;
+END;
+GO
+
+-- ── 3.12 tbl_PaymentTransaction (10 giao dịch online mẫu) ────
+INSERT INTO tbl_PaymentTransaction (TransactionId, OrderId, TenantId, sGateway, sGatewayTransId, fAmount, iStatus, dCreatedAt, dUpdatedAt)
+SELECT TOP 10
+    NEWID(),
+    o.OrderId,
+    o.TenantId,
+    CASE ROW_NUMBER() OVER (ORDER BY o.dCreatedAt)
+        WHEN 1 THEN 'VNPAY'  WHEN 2 THEN 'MOMO'
+        WHEN 3 THEN 'MOMO'   WHEN 4 THEN 'ZALOPAY'
+        WHEN 5 THEN 'VNPAY'  WHEN 6 THEN 'VNPAY'
+        WHEN 7 THEN 'MOMO'   WHEN 8 THEN 'ZALOPAY'
+        WHEN 9 THEN 'VNPAY'  ELSE        'MOMO'
+    END,
+    'TN' + FORMAT(ROW_NUMBER() OVER (ORDER BY o.dCreatedAt), '000000'),
+    o.fTotal,
+    1,  -- Success
+    o.dCreatedAt,
+    o.dPaidAt
+FROM tbl_Order o
+WHERE o.sPaymentMethod IN ('VNPAY','MOMO','ZALOPAY')
+ORDER BY o.dCreatedAt;
+GO
+
+-- ── 3.13 tbl_AuditLog (8 bản ghi mẫu) ────────────────────────
+INSERT INTO tbl_AuditLog (TenantId, UserId, sAction, sEntityName, sEntityId, sOldValue, sNewValue, sIpAddress, dCreatedAt)
+VALUES
+('00000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',
+ N'LOGIN_SUCCESS','tbl_User','20000000-0000-0000-0000-000000000001', NULL, NULL,'118.69.211.10','2026-01-01 08:00:00'),
+
+('00000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000003',
+ N'LOGIN_SUCCESS','tbl_User','20000000-0000-0000-0000-000000000003', NULL, NULL,'14.162.131.5', '2026-01-01 08:05:00'),
+
+('00000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',
+ N'CREATE_TENANT','tbl_Tenant','00000000-0000-0000-0000-000000000008', NULL,
+ N'{"TenantName":"E-Coffee Nha Trang","Status":0}','118.69.211.10','2026-01-02 09:00:00'),
+
+('00000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000003',
+ N'UPDATE_PRODUCT_PRICE','tbl_Product','50000000-0000-0000-0002-000000000007',
+ N'{"fPrice":50000}',N'{"fPrice":55000}','14.162.131.5','2026-01-05 10:30:00'),
+
+('00000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000003',
+ N'LOCK_USER','tbl_User','20000000-0000-0000-0000-000000000004',
+ N'{"iStatus":1}',N'{"iStatus":0}','14.162.131.5','2026-01-10 14:00:00'),
+
+('00000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000003',
+ N'UNLOCK_USER','tbl_User','20000000-0000-0000-0000-000000000004',
+ N'{"iStatus":0}',N'{"iStatus":1}','14.162.131.5','2026-01-10 16:30:00'),
+
+('00000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000006',
+ N'ADJUST_STOCK','tbl_Ingredient','60000000-0000-0000-0003-000000000001',
+ N'{"fStockQuantity":7000}',N'{"fStockQuantity":7500}','113.190.87.22','2026-01-15 11:00:00'),
+
+('00000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',
+ N'LOGIN_FAILED','tbl_User','unknown', NULL, N'{"email":"hacker@evil.com"}','1.52.64.100','2026-01-20 03:14:00');
+GO
+
+-- View có thể sử dụng
+-- View doanh thu theo chi nhánh theo ngày
+CREATE VIEW vw_RevenueByTenantDate AS
+SELECT
+    t.sTenantName                           AS TenantName,
+    CAST(o.dCreatedAt AS DATE)              AS OrderDate,
+    COUNT(o.OrderId)                        AS TotalOrders,
+    SUM(o.fTotal)                           AS TotalRevenue,
+    AVG(o.fTotal)                           AS AvgOrderValue
+FROM tbl_Order o
+JOIN tbl_Tenant t ON o.TenantId = t.TenantId
+WHERE o.iStatus = 1  -- chỉ đơn Paid
+GROUP BY t.sTenantName, CAST(o.dCreatedAt AS DATE);
+GO
+
+-- View tồn kho cảnh báo thấp
+CREATE VIEW vw_LowStockAlert AS
+SELECT
+    t.sTenantName,
+    i.sIngredientName,
+    i.fStockQuantity,
+    i.fAlertThreshold,
+    i.sUnit,
+    CASE WHEN i.fStockQuantity = 0 THEN N'Hết hàng'
+         ELSE N'Sắp hết' END AS AlertLevel
+FROM tbl_Ingredient i
+JOIN tbl_Tenant t ON i.TenantId = t.TenantId
+WHERE i.fStockQuantity <= i.fAlertThreshold;
+GO
+
+-- View top sản phẩm bán chạy theo chi nhánh
+CREATE VIEW vw_TopSellingProducts AS
+SELECT
+    t.sTenantName,
+    p.sProductName,
+    c.sCategoryName,
+    SUM(oi.iQuantity)                    AS TotalQtySold,
+    SUM(oi.iQuantity * oi.fUnitPrice)    AS TotalRevenue
+FROM tbl_OrderItem oi
+JOIN tbl_Order  o ON oi.OrderId  = o.OrderId
+JOIN tbl_Product p ON oi.ProductId = p.ProductId
+JOIN tbl_Tenant t  ON o.TenantId   = t.TenantId
+JOIN tbl_Category c ON p.CategoryId = c.CategoryId
+WHERE o.iStatus = 1
+GROUP BY t.sTenantName, p.sProductName, c.sCategoryName;
+GO
+
+-- View thống kê loyalty khách hàng
+CREATE VIEW vw_CustomerLoyaltySummary AS
+SELECT
+    c.sFullName                     AS CustomerName,
+    c.sPhone,
+    c.sMemberLevel,
+    c.iLoyaltyPoint                 AS CurrentPoints,
+    COUNT(CASE WHEN lh.sType = 'EARN'   THEN 1 END) AS EarnTransactions,
+    COUNT(CASE WHEN lh.sType = 'REDEEM' THEN 1 END) AS RedeemTransactions,
+    SUM(CASE WHEN lh.sType = 'EARN'   THEN lh.iPointChange ELSE 0 END) AS TotalEarned,
+    SUM(CASE WHEN lh.sType = 'REDEEM' THEN ABS(lh.iPointChange) ELSE 0 END) AS TotalRedeemed
+FROM tbl_Customer c
+LEFT JOIN tbl_LoyaltyHistory lh ON c.CustomerId = lh.CustomerId
+GROUP BY c.sFullName, c.sPhone, c.sMemberLevel, c.iLoyaltyPoint;
+GO
+
+-- Store Procedue dùng cho FR
+-- SP: Tạo đơn hàng và tự động trừ kho (FR-010, FR-011, FR-015)
+CREATE OR ALTER PROCEDURE sp_CreateOrder
+    @TenantId       UNIQUEIDENTIFIER,
+    @UserId         UNIQUEIDENTIFIER,
+    @CustomerId     UNIQUEIDENTIFIER = NULL,
+    @PaymentMethod  VARCHAR(20) = 'CASH',
+    @ItemsXml       NVARCHAR(MAX)       -- JSON: [{"ProductId":"...","Qty":2}]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRANSACTION;
+    BEGIN TRY
+        DECLARE @NewOrderId UNIQUEIDENTIFIER = NEWID();
+        DECLARE @Total DECIMAL(12,2) = 0;
+
+        -- Parse items từ JSON và tính tổng tiền (SQL Server 2022 JSON support)
+        SELECT @Total = SUM(p.fPrice * j.Qty)
+        FROM OPENJSON(@ItemsXml) WITH (
+            ProductId UNIQUEIDENTIFIER '$.ProductId',
+            Qty       INT              '$.Qty'
+        ) j
+        JOIN tbl_Product p ON j.ProductId = p.ProductId;
+
+        -- INSERT hóa đơn
+        INSERT INTO tbl_Order (OrderId, TenantId, UserId, CustomerId, iStatus, fTotal, sPaymentMethod)
+        VALUES (@NewOrderId, @TenantId, @UserId, @CustomerId, 0, @Total, @PaymentMethod);
+
+        -- INSERT order items
+        INSERT INTO tbl_OrderItem (OrderId, ProductId, iQuantity, fUnitPrice)
+        SELECT @NewOrderId, j.ProductId, j.Qty, p.fPrice
+        FROM OPENJSON(@ItemsXml) WITH (
+            ProductId UNIQUEIDENTIFIER '$.ProductId',
+            Qty       INT              '$.Qty'
+        ) j
+        JOIN tbl_Product p ON j.ProductId = p.ProductId;
+
+        -- Tự động trừ kho theo Recipe (FR-015)
+        INSERT INTO tbl_StockHistory (TenantId, IngredientId, OrderId, fChangeAmount, sType, sNote, UserId)
+        SELECT
+            @TenantId,
+            r.IngredientId,
+            @NewOrderId,
+            -(r.fAmountRequired * j.Qty),
+            'DEDUCT',
+            N'Tự động trừ theo đơn ' + CAST(@NewOrderId AS NVARCHAR(36)),
+            @UserId
+        FROM OPENJSON(@ItemsXml) WITH (
+            ProductId UNIQUEIDENTIFIER '$.ProductId',
+            Qty       INT              '$.Qty'
+        ) j
+        JOIN tbl_Recipe r ON j.ProductId = r.ProductId;
+
+        -- Cập nhật tồn kho thực tế
+        UPDATE i
+        SET i.fStockQuantity = i.fStockQuantity - ABS(sh.fChangeAmount),
+            i.dUpdatedAt     = SYSDATETIME()
+        FROM tbl_Ingredient i
+        JOIN tbl_StockHistory sh ON i.IngredientId = sh.IngredientId
+        WHERE sh.OrderId = @NewOrderId AND sh.sType = 'DEDUCT';
+
+        COMMIT TRANSACTION;
+        SELECT @NewOrderId AS NewOrderId, @Total AS TotalAmount, N'SUCCESS' AS Result;
+
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        SELECT ERROR_MESSAGE() AS ErrorMessage, N'FAILED' AS Result;
+    END CATCH;
+END;
+GO
+
+-- SP: Nhập kho nguyên liệu (FR-030)
+CREATE OR ALTER PROCEDURE sp_ImportStock
+    @TenantId       UNIQUEIDENTIFIER,
+    @IngredientId   UNIQUEIDENTIFIER,
+    @Quantity       DECIMAL(12,3),
+    @UserId         UNIQUEIDENTIFIER,
+    @Note           NVARCHAR(200) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRANSACTION;
+    BEGIN TRY
+        UPDATE tbl_Ingredient
+        SET fStockQuantity = fStockQuantity + @Quantity,
+            dUpdatedAt     = SYSDATETIME()
+        WHERE IngredientId = @IngredientId AND TenantId = @TenantId;
+
+        INSERT INTO tbl_StockHistory (TenantId, IngredientId, OrderId, fChangeAmount, sType, sNote, UserId)
+        VALUES (@TenantId, @IngredientId, NULL, @Quantity, 'IMPORT', @Note, @UserId);
+
+        COMMIT TRANSACTION;
+        SELECT N'IMPORT_SUCCESS' AS Result;
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        SELECT ERROR_MESSAGE() AS ErrorMessage, N'FAILED' AS Result;
+    END CATCH;
+END;
+GO
+
+--  PHẦN 6: KIỂM TRA DỮ LIỆU
+
+-- Tổng quan bảng
+SELECT 'tbl_Tenant'          AS TableName, COUNT(*) AS RowCount FROM tbl_Tenant
+UNION ALL SELECT 'tbl_Role',                COUNT(*) FROM tbl_Role
+UNION ALL SELECT 'tbl_User',                COUNT(*) FROM tbl_User
+UNION ALL SELECT 'tbl_Customer',            COUNT(*) FROM tbl_Customer
+UNION ALL SELECT 'tbl_Category',            COUNT(*) FROM tbl_Category
+UNION ALL SELECT 'tbl_Product',             COUNT(*) FROM tbl_Product
+UNION ALL SELECT 'tbl_Ingredient',          COUNT(*) FROM tbl_Ingredient
+UNION ALL SELECT 'tbl_Recipe',              COUNT(*) FROM tbl_Recipe
+UNION ALL SELECT 'tbl_Order',               COUNT(*) FROM tbl_Order
+UNION ALL SELECT 'tbl_OrderItem',           COUNT(*) FROM tbl_OrderItem
+UNION ALL SELECT 'tbl_StockHistory',        COUNT(*) FROM tbl_StockHistory
+UNION ALL SELECT 'tbl_LoyaltyHistory',      COUNT(*) FROM tbl_LoyaltyHistory
+UNION ALL SELECT 'tbl_PaymentTransaction',  COUNT(*) FROM tbl_PaymentTransaction
+UNION ALL SELECT 'tbl_AuditLog',            COUNT(*) FROM tbl_AuditLog;
+
+-- Doanh thu theo chi nhánh
+SELECT * FROM vw_RevenueByTenantDate ORDER BY TenantName, OrderDate;
+
+-- Cảnh báo tồn kho
+SELECT * FROM vw_LowStockAlert;
+
+-- Top sản phẩm bán chạy
+SELECT TOP 10 * FROM vw_TopSellingProducts ORDER BY TotalQtySold DESC;
+
+-- Thống kê loyalty
+SELECT * FROM vw_CustomerLoyaltySummary ORDER BY CurrentPoints DESC;
+GO
+
