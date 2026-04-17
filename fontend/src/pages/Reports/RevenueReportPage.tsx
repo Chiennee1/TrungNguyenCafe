@@ -24,28 +24,54 @@ export function RevenueReportPage() {
     const fetchReport = async () => {
       try {
         setIsLoading(true);
-        const res = await axiosInstance.get('/reports/revenue');
-        
-        const mappedDaily = res.data.dailyBreakdown.map((d: any) => ({
-          name: new Date(d.date).toLocaleDateString('vi-VN', { weekday: 'short' }),
+
+        // Calculate from/to based on selected range
+        const now = new Date();
+        const to = new Date(now);
+        to.setHours(23, 59, 59, 999);
+
+        const from = new Date(now);
+        if (timeRange === 'today') {
+          from.setHours(0, 0, 0, 0);
+        } else if (timeRange === 'week') {
+          from.setDate(now.getDate() - 6);
+          from.setHours(0, 0, 0, 0);
+        } else {
+          // month
+          from.setDate(1);
+          from.setHours(0, 0, 0, 0);
+        }
+
+        const params = new URLSearchParams({
+          from: from.toISOString(),
+          to: to.toISOString(),
+        });
+
+        const res = await axiosInstance.get(`/reports/revenue?${params}`);
+
+        const total = res.data.totalRevenue ?? 0;
+        const orders = res.data.totalOrders ?? 0;
+
+        const mappedDaily = (res.data.dailyBreakdown ?? []).map((d: any) => ({
+          name: new Date(d.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
           revenue: d.revenue,
           orders: d.orderCount
         }));
 
-        const mappedProducts = res.data.topProducts.map((p: any) => ({
+        const mappedProducts = (res.data.topProducts ?? []).map((p: any) => ({
           name: p.productName,
           sales: p.totalQuantity
         }));
 
         setReportData({
-          totalRevenue: res.data.totalRevenue,
-          totalOrders: res.data.totalOrders,
-          averageOrderValue: res.data.averageOrderValue,
+          totalRevenue: total,
+          totalOrders: orders,
+          averageOrderValue: orders > 0 ? total / orders : 0,
           dailyBreakdown: mappedDaily,
           topProducts: mappedProducts,
         });
       } catch(err) {
-        console.error(err);
+        console.error('Report fetch error:', err);
       } finally {
         setIsLoading(false);
       }

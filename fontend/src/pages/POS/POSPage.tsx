@@ -1,70 +1,99 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Coffee, UserPlus, CheckCircle2, X } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Coffee, UserPlus, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePOSStore, Product } from '../../store/posStore';
 import { SEO } from '../../components/SEO';
 
 import axiosInstance from '../../utils/axiosInstance';
 
-const CATEGORIES = ['All', 'Coffee', 'Tea', 'Freeze', 'Food'];
+interface CustomerInfo {
+  customerId: string;
+  name: string;
+  points: number;
+  memberLevel: string;
+}
 
 export function POSPage() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [customerInfo, setCustomerInfo] = useState<{name: string, points: number} | null>(null);
+  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
+  const [customerSearching, setCustomerSearching] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
-    const fetchProducts = async () => {
+    const fetchAll = async () => {
       try {
-        const res = await axiosInstance.get('/products');
-        const mapped: Product[] = res.data.map((p: any) => ({
+        const [prodRes, catRes] = await Promise.all([
+          axiosInstance.get('/products'),
+          axiosInstance.get('/categories'),
+        ]);
+        const mapped: Product[] = prodRes.data.map((p: any) => ({
           id: p.productId,
           name: p.name,
           price: p.price,
-          category: p.categoryName || 'Coffee',
-          image: 'https://picsum.photos/seed/placeholder/200/200',
+          category: p.categoryName || 'Khác',
+          image: 'https://picsum.photos/seed/' + p.productId + '/200/200',
           status: p.status === 1 ? 'AVAILABLE' : 'OUT_OF_STOCK'
         }));
         setProducts(mapped);
+        const catNames: string[] = catRes.data.map((c: any) => c.name);
+        setCategories(['Tất cả', ...catNames]);
+        setActiveCategory('Tất cả');
       } catch (err) {
-        console.error("Failed to load products in POS", err);
+        console.error("Failed to load POS data", err);
       } finally {
         setIsLoading(false);
       }
     };
-    fetchProducts();
+    fetchAll();
   }, []);
   
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, total } = usePOSStore();
 
-  const filteredProducts = products.filter(p => 
-    (activeCategory === 'All' || p.category === activeCategory) &&
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredProducts = products.filter(p =>
+    (activeCategory === 'Tất cả' || p.category === activeCategory) &&
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+    p.status === 'AVAILABLE'
   );
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   };
 
-  const handleSearchCustomer = () => {
-    if (customerPhone.length >= 9) {
-      // Mock finding a customer
-      setCustomerInfo({ name: 'Nguyễn Văn Khách', points: 15000 });
-    } else {
+  const handleSearchCustomer = async () => {
+    const phone = customerPhone.trim();
+    if (phone.length < 9) {
       setCustomerInfo(null);
       setUsePoints(false);
+      return;
+    }
+    setCustomerSearching(true);
+    try {
+      const res = await axiosInstance.get(`/customers/phone/${phone}`);
+      const d = res.data;
+      setCustomerInfo({
+        customerId: d.customerId,
+        name: d.fullName,
+        points: d.loyaltyPoint ?? 0,
+        memberLevel: d.memberLevel ?? 'STANDARD',
+      });
+    } catch {
+      setCustomerInfo(null);
+      setUsePoints(false);
+    } finally {
+      setCustomerSearching(false);
     }
   };
 
   const handlePayment = async (method: 'CASH' | 'CARD') => {
     try {
       await axiosInstance.post('/orders', {
-        customerId: null, // Since we don't have customer search integrated yet, or we could pass customerInfo id if exists
+        customerId: customerInfo?.customerId ?? null,
         paymentMethod: method,
         items: cart.map(item => ({
           productId: item.id,
@@ -82,7 +111,7 @@ export function POSPage() {
       }, 3000);
     } catch(err) {
       console.error("Failed to create order", err);
-      alert("Tạo đơn hàng thất bại!");
+      alert("Tạo đơn hàng thất bại! Vui lòng kiểm tra lại.");
     }
   };
 
@@ -154,7 +183,7 @@ export function POSPage() {
             />
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-            {CATEGORIES.map(cat => (
+            {categories.map(cat => (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -251,8 +280,12 @@ export function POSPage() {
                   }
                 }}
                 onBlur={handleSearchCustomer}
+                onKeyDown={e => e.key === 'Enter' && handleSearchCustomer()}
                 className="w-full pl-9 pr-3 py-2 bg-white border border-coffee-200 rounded-xl text-sm focus:border-gold outline-none"
               />
+              {customerSearching && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-coffee-400">Đang tìm...</span>
+              )}
             </div>
           </div>
           
@@ -265,8 +298,11 @@ export function POSPage() {
                 className="mt-3 bg-white p-3 rounded-xl border border-gold/30"
               >
                 <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium text-coffee-dark text-sm">{customerInfo.name}</span>
-                  <span className="text-gold font-bold text-sm">{formatCurrency(customerInfo.points)} điểm</span>
+                  <div>
+                    <span className="font-medium text-coffee-dark text-sm">{customerInfo.name}</span>
+                    <span className="ml-2 text-xs bg-coffee-100 text-coffee-600 px-2 py-0.5 rounded-full">{customerInfo.memberLevel}</span>
+                  </div>
+                  <span className="text-gold font-bold text-sm">{customerInfo.points.toLocaleString()} điểm</span>
                 </div>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input 
