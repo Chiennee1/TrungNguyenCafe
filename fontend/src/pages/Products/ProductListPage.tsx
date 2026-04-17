@@ -92,6 +92,8 @@ export function ProductListPage() {
             <tbody className="divide-y divide-coffee-100">
               {isLoading ? (
                 <tr><td colSpan={5} className="p-6 text-center text-coffee-400">Đang tải dữ liệu...</td></tr>
+              ) : products.length === 0 ? (
+                <tr><td colSpan={5} className="p-6 text-center text-coffee-400">Không có sản phẩm nào.</td></tr>
               ) : products.map((product) => (
                 <tr key={product.id} className="hover:bg-coffee-50/30 transition-colors">
                   <td className="p-6 font-medium text-coffee-950">{product.name}</td>

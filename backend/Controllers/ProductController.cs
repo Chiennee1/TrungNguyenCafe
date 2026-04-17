@@ -20,10 +20,16 @@ public class ProductController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] bool activeOnly = true)
     {
+        var role = HttpContext.Items["UserRole"]?.ToString();
         var tenantId = (Guid?)HttpContext.Items["TenantId"];
-        if (tenantId == null) return Unauthorized();
 
-        var products = await _productService.GetProductsByTenantAsync(tenantId.Value, activeOnly);
+        Guid? scopedTenantId = (role == "SYSTEM_ADMIN" || role == "CHAIN_MANAGER")
+            ? null
+            : tenantId;
+
+        if (scopedTenantId != null && tenantId == null) return Unauthorized();
+
+        var products = await _productService.GetProductsByTenantAsync(scopedTenantId, activeOnly);
         return Ok(products);
     }
 

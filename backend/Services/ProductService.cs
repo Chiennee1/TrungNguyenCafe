@@ -18,7 +18,7 @@ public class ProductService : IProductService
         _productRepo = productRepo;
     }
 
-    public async Task<IEnumerable<ProductResponseDto>> GetProductsByTenantAsync(Guid tenantId, bool activeOnly = true)
+    public async Task<IEnumerable<ProductResponseDto>> GetProductsByTenantAsync(Guid? tenantId, bool activeOnly = true)
     {
         var products = await _productRepo.GetProductsByTenantAsync(tenantId, activeOnly);
         return products.Select(MapToDto);

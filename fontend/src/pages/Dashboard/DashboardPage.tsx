@@ -25,9 +25,9 @@ export function DashboardPage() {
     const fetchDashboard = async () => {
       try {
         const [revRes, stockRes, ordRes] = await Promise.all([
-          axiosInstance.get('/reports/revenue').catch(() => ({ data: { totalRevenue: 0, totalOrders: 0 }})),
-          axiosInstance.get('/inventory/low-stock').catch(() => ({ data: [] })),
-          axiosInstance.get('/orders').catch(() => ({ data: [] }))
+          axiosInstance.get('/reports/revenue').catch((e) => { console.error("Revenue check error", e?.response?.data || e.message); return { data: { totalRevenue: 0, totalOrders: 0 }} }),
+          axiosInstance.get('/inventory/low-stock').catch((e) => { console.error("Low stock error", e?.response?.data || e.message); return { data: [] } }),
+          axiosInstance.get('/orders').catch((e) => { console.error("Orders check error", e?.response?.data || e.message); return { data: [] } })
         ]);
         
         setStats([

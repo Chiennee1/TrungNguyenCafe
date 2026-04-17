@@ -23,7 +23,7 @@ public class ReportController : ControllerBase
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to)
     {
-        var fromDate = from ?? DateTime.Today.AddDays(-30);
+        var fromDate = from ?? DateTime.Today.AddDays(-365);
         var toDate   = to ?? DateTime.Today.AddDays(1);
 
         var role = HttpContext.Items["UserRole"]?.ToString();
