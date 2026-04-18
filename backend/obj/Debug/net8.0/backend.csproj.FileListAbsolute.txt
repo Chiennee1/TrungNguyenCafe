@@ -138,5 +138,5 @@ D:\NhapMonCNPM\TrungNguyenCafe\backend\obj\Debug\net8.0\refint\backend.dll
 D:\NhapMonCNPM\TrungNguyenCafe\backend\obj\Debug\net8.0\backend.pdb
 D:\NhapMonCNPM\TrungNguyenCafe\backend\obj\Debug\net8.0\backend.genruntimeconfig.cache
 D:\NhapMonCNPM\TrungNguyenCafe\backend\obj\Debug\net8.0\ref\backend.dll
-D:\NhapMonCNPM\TrungNguyenCafe\backend\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
 D:\NhapMonCNPM\TrungNguyenCafe\backend\obj\Debug\net8.0\backend.sourcelink.json
+D:\NhapMonCNPM\TrungNguyenCafe\backend\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
