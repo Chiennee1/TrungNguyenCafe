@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { useAuthStore, Role } from '../../store/authStore';
 import { SEO } from '../../components/SEO';
 import axiosInstance from '../../utils/axiosInstance';
+import { getHomePathByRole } from '../../utils/roleRoute';
 
 export function LoginPage() {
   const [email, setEmail] = useState('admin@trungnguyen.com.vn');
@@ -39,7 +40,7 @@ export function LoginPage() {
       // Save token to localStorage (axiosInstance interceptor relies on this)
       localStorage.setItem('token', data.token);
 
-      navigate(data.role === 'STAFF_POS' ? '/pos' : '/dashboard');
+      navigate(getHomePathByRole(data.role));
     } catch (error) {
       console.error("Login failed", error);
       alert("Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.");

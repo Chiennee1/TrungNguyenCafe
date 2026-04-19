@@ -44,28 +44,39 @@ public class UserController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SYSTEM_ADMIN,STORE_MANAGER")]
+    [Authorize(Roles = "SYSTEM_ADMIN,CHAIN_MANAGER,STORE_MANAGER")]
     public async Task<IActionResult> Create([FromBody] CreateUserDto dto)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
 
+        var role = HttpContext.Items["UserRole"]?.ToString();
         var tenantId = (Guid?)HttpContext.Items["TenantId"];
-        if (tenantId == null) return Unauthorized();
+
+        var targetTenantId = (role == "SYSTEM_ADMIN" || role == "CHAIN_MANAGER") && dto.TenantId.HasValue
+            ? dto.TenantId.Value
+            : tenantId;
+
+        if (targetTenantId == null) return Unauthorized(new { message = "Không xác định được chi nhánh." });
 
         var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
 
         if (await _context.Users.AnyAsync(u => u.SEmail.ToLower() == normalizedEmail))
             return Conflict(new { message = "Email đã tồn tại." });
 
+        // Generate ID early to ensure consistency
+        var userId = Guid.NewGuid();
+
         var user = new User
         {
-            TenantId = tenantId.Value,
+            UserId = userId,
+            TenantId = targetTenantId.Value,
             RoleId = dto.RoleId,
             SFullName = dto.FullName,
             SEmail = normalizedEmail,
             SPasswordHash = PasswordHelper.HashPassword(dto.Password),
             SPhone = dto.Phone,
-            IStatus = 1
+            IStatus = 1,
+            DCreatedAt = DateTime.UtcNow
         };
 
         _context.Users.Add(user);
@@ -74,16 +85,72 @@ public class UserController : ControllerBase
     }
 
     [HttpPatch("{id}/status")]
-    [Authorize(Roles = "SYSTEM_ADMIN,STORE_MANAGER")]
+    [Authorize(Roles = "SYSTEM_ADMIN,CHAIN_MANAGER,STORE_MANAGER")]
     public async Task<IActionResult> ToggleStatus(Guid id, [FromBody] byte status)
     {
         var tenantId = (Guid?)HttpContext.Items["TenantId"];
         var user = await _context.Users.FindAsync(id);
         if (user == null) return NotFound();
-        if (tenantId.HasValue && user.TenantId != tenantId.Value) return Forbid();
+        
+        var currentRole = HttpContext.Items["UserRole"]?.ToString();
+        if (currentRole != "SYSTEM_ADMIN" && currentRole != "CHAIN_MANAGER" && tenantId.HasValue && user.TenantId != tenantId.Value) 
+            return Forbid();
 
         user.IStatus = status;
         await _context.SaveChangesAsync();
         return Ok(new { user.UserId, user.IStatus });
+    }
+
+    [HttpPut("{id}")]
+    [Authorize(Roles = "SYSTEM_ADMIN,CHAIN_MANAGER,STORE_MANAGER")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto)
+    {
+        if (!ModelState.IsValid) return BadRequest(ModelState);
+
+        var user = await _context.Users.FindAsync(id);
+        if (user == null) return NotFound();
+
+        var currentRole = HttpContext.Items["UserRole"]?.ToString();
+        var currentTenantId = (Guid?)HttpContext.Items["TenantId"];
+
+        if (currentRole != "SYSTEM_ADMIN" && currentRole != "CHAIN_MANAGER" && currentTenantId.HasValue && user.TenantId != currentTenantId.Value)
+            return Forbid();
+
+        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+
+        if (user.SEmail.ToLower() != normalizedEmail && await _context.Users.AnyAsync(u => u.SEmail.ToLower() == normalizedEmail))
+            return Conflict(new { message = "Email đã tồn tại." });
+
+        var targetTenantId = (currentRole == "SYSTEM_ADMIN" || currentRole == "CHAIN_MANAGER") && dto.TenantId.HasValue
+            ? dto.TenantId.Value
+            : user.TenantId;
+
+        user.TenantId = targetTenantId;
+        user.RoleId = dto.RoleId;
+        user.SFullName = dto.FullName;
+        user.SEmail = normalizedEmail;
+        user.SPhone = dto.Phone;
+        user.IStatus = dto.Status;
+
+        await _context.SaveChangesAsync();
+        return Ok(new { user.UserId, user.SEmail });
+    }
+
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "SYSTEM_ADMIN,CHAIN_MANAGER,STORE_MANAGER")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null) return NotFound();
+
+        var currentRole = HttpContext.Items["UserRole"]?.ToString();
+        var currentTenantId = (Guid?)HttpContext.Items["TenantId"];
+
+        if (currentRole != "SYSTEM_ADMIN" && currentRole != "CHAIN_MANAGER" && currentTenantId.HasValue && user.TenantId != currentTenantId.Value)
+            return Forbid();
+
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
+        return NoContent();
     }
 }

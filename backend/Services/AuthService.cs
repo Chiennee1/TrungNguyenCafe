@@ -70,7 +70,7 @@ public class AuthService : IAuthService
         if (await _context.Users.AnyAsync(u => u.SEmail.ToLower() == normalizedEmail))
             return false;
 
-        var role = await _context.Roles.FirstOrDefaultAsync(r => r.SRoleName == "SYSTEM_ADMIN");
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.SRoleName == "STAFF_POS");
         if (role == null) return false;
 
         var tenantId = Guid.NewGuid();

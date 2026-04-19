@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { getHomePathByRole } from '../../utils/roleRoute';
 
 export function PrivateRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) {
   const { isAuthenticated, user } = useAuthStore();
@@ -9,7 +10,7 @@ export function PrivateRoute({ children, allowedRoles }: { children: React.React
   }
 
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={getHomePathByRole(user.role)} replace />;
   }
 
   return <>{children}</>;

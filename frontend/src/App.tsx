@@ -63,7 +63,7 @@ function AnimatedRoutes() {
           } />
           
           <Route path="/orders" element={
-            <PrivateRoute allowedRoles={['STORE_MANAGER', 'SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER']}>
+            <PrivateRoute allowedRoles={['STORE_MANAGER', 'SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'BARISTA']}>
               <OrderHistoryPage />
             </PrivateRoute>
           } />

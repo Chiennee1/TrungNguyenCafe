@@ -4,6 +4,7 @@ namespace backend.DTOs.User;
 
 public class CreateUserDto
 {
+    public Guid? TenantId { get; set; } // Added for Admin
     [Required]
     public Guid RoleId { get; set; }
     [Required, MaxLength(100)]
@@ -14,6 +15,20 @@ public class CreateUserDto
     public string Password { get; set; } = string.Empty;
     [MaxLength(15)]
     public string? Phone { get; set; }
+}
+
+public class UpdateUserDto
+{
+    public Guid? TenantId { get; set; } // Required if Admin edits
+    [Required]
+    public Guid RoleId { get; set; }
+    [Required, MaxLength(100)]
+    public string FullName { get; set; } = string.Empty;
+    [Required, EmailAddress, MaxLength(150)]
+    public string Email { get; set; } = string.Empty;
+    [MaxLength(15)]
+    public string? Phone { get; set; }
+    public byte Status { get; set; }
 }
 
 public class UserResponseDto

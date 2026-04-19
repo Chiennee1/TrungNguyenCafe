@@ -4,6 +4,7 @@ import {
   Coffee, 
   ShoppingCart, 
   Package, 
+  ReceiptText,
   Users, 
   Store, 
   BarChart3, 
@@ -26,10 +27,11 @@ export function Sidebar() {
   const navItems = [
     { name: 'Tổng Quan', path: '/dashboard', icon: LayoutDashboard, roles: ['SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'STORE_MANAGER'] },
     { name: 'POS Bán Hàng', path: '/pos', icon: ShoppingCart, roles: ['STAFF_POS', 'STORE_MANAGER'] },
+    { name: 'Đơn Hàng', path: '/orders', icon: ReceiptText, roles: ['STORE_MANAGER', 'SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'BARISTA'] },
     { name: 'Quản Lý Menu', path: '/products', icon: Package, roles: ['STORE_MANAGER', 'SYSTEM_ADMIN'] },
     { name: 'Kho Nguyên Liệu', path: '/inventory', icon: Store, roles: ['WAREHOUSE', 'STORE_MANAGER'] },
     { name: 'Báo Cáo', path: '/reports', icon: BarChart3, roles: ['SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'STORE_MANAGER'] },
-    { name: 'Thông Báo', path: '/notifications', icon: Bell, roles: ['SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'STORE_MANAGER', 'STAFF_POS', 'WAREHOUSE'] },
+    { name: 'Thông Báo', path: '/notifications', icon: Bell, roles: ['SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'STORE_MANAGER', 'STAFF_POS', 'WAREHOUSE', 'BARISTA'] },
     { name: 'Nhân Viên', path: '/users', icon: Users, roles: ['STORE_MANAGER', 'SYSTEM_ADMIN'] },
     { name: 'Quản Lý Quán', path: '/tenants', icon: Building2, roles: ['SYSTEM_ADMIN'] },
   ];
