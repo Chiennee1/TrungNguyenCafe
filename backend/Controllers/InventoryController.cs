@@ -46,8 +46,17 @@ public class InventoryController : ControllerBase
         var userId   = (Guid?)HttpContext.Items["UserId"];
         if (tenantId == null || userId == null) return Unauthorized();
 
-        var result = await _inventoryService.ImportStockAsync(tenantId.Value, userId.Value, dto);
-        return result == null ? NotFound(new { message = "Nguyên liệu không tồn tại trong chi nhánh này." }) : Ok(result);
+        try
+        {
+            var result = await _inventoryService.ImportStockAsync(tenantId.Value, userId.Value, dto);
+            return result == null
+                ? NotFound(new { message = "Nguyên liệu không tồn tại trong chi nhánh này." })
+                : Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPost("export")]

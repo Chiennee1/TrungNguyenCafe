@@ -15,6 +15,8 @@ public class Ingredient
     public decimal FStockQuantity { get; set; } = 0;
     [Column(TypeName = "decimal(12,3)")]
     public decimal FAlertThreshold { get; set; } = 0;
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal FUnitCost { get; set; } = 0;
     public DateTime DUpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation

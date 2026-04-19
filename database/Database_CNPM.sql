@@ -109,6 +109,8 @@ CREATE TABLE tbl_Ingredient
         CONSTRAINT chk_StockQty CHECK (fStockQuantity >= 0),
     fAlertThreshold DECIMAL(12,3) NOT NULL DEFAULT 0
         CONSTRAINT chk_AlertThreshold CHECK (fAlertThreshold >= 0),
+    fUnitCost DECIMAL(12,2) NOT NULL DEFAULT 0
+        CONSTRAINT chk_UnitCost CHECK (fUnitCost >= 0),
     dUpdatedAt DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
     CONSTRAINT pk_Ingredient PRIMARY KEY (IngredientId),
     CONSTRAINT fk_Ingredient_Tenant FOREIGN KEY (TenantId) REFERENCES tbl_Tenant(TenantId)
@@ -176,6 +178,9 @@ CREATE TABLE tbl_StockHistory
     -- NULL nếu nhập kho thủ công
     fChangeAmount DECIMAL(12,3) NOT NULL,
     -- âm=xuất, dương=nhập
+    fUnitPrice DECIMAL(12,2) NOT NULL DEFAULT 0
+        CONSTRAINT chk_StockUnitPrice CHECK (fUnitPrice >= 0),
+    fTotalValue DECIMAL(14,2) NOT NULL DEFAULT 0,
     sType VARCHAR(10) NOT NULL
         CONSTRAINT chk_StockType CHECK (sType IN ('DEDUCT','IMPORT','ADJUST')),
     sNote NVARCHAR(200) NULL,

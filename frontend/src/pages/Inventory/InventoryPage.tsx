@@ -1,43 +1,205 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Package, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Search, X, Clock } from 'lucide-react';
 import { SEO } from '../../components/SEO';
 
 import axiosInstance from '../../utils/axiosInstance';
 
+type StockStatus = 'LOW' | 'GOOD';
+
+interface InventoryItem {
+  id: string;
+  name: string;
+  unit: string;
+  stock: number;
+  minStock: number;
+  unitCost: number;
+  status: StockStatus;
+}
+
+interface InventoryHistoryItem {
+  id: string;
+  date: string;
+  type: 'IMPORT' | 'DEDUCT' | 'ADJUST';
+  item: string;
+  quantity: number;
+  signedAmount: number;
+  unit: string;
+  unitPrice: number;
+  totalValue: number;
+  user: string;
+  note: string;
+}
+
+interface InventoryStats {
+  totalItems: number;
+  lowStockItems: number;
+  importedAmountThisMonth: number;
+  importTransactionsThisMonth: number;
+}
+
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 export function InventoryPage() {
   const [activeTab, setActiveTab] = useState('STOCK');
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionType, setActionType] = useState<'IMPORT' | 'EXPORT'>('IMPORT');
-  const [inventory, setInventory] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [history, setHistory] = useState<InventoryHistoryItem[]>([]);
+  const [stats, setStats] = useState<InventoryStats>({
+    totalItems: 0,
+    lowStockItems: 0,
+    importedAmountThisMonth: 0,
+    importTransactionsThisMonth: 0,
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [selectedIngredientId, setSelectedIngredientId] = useState('');
+  const [amountInput, setAmountInput] = useState('');
+  const [unitPriceInput, setUnitPriceInput] = useState('');
+  const [noteInput, setNoteInput] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
 
+  const fetchInventory = async () => {
+    const res = await axiosInstance.get('/inventory');
+    const mapped: InventoryItem[] = res.data.map((i: any) => ({
+      id: i.ingredientId,
+      name: i.name,
+      unit: i.unit,
+      stock: Number(i.stockQuantity ?? 0),
+      minStock: Number(i.alertThreshold ?? 0),
+      unitCost: Number(i.unitCost ?? 0),
+      status: Number(i.stockQuantity ?? 0) <= Number(i.alertThreshold ?? 0) ? 'LOW' : 'GOOD',
+    }));
+    setInventory(mapped);
+  };
+
+  const fetchHistory = async () => {
+    const res = await axiosInstance.get('/inventory/history?take=100');
+    const mapped: InventoryHistoryItem[] = res.data.map((h: any) => ({
+      id: h.historyId,
+      date: new Date(h.createdAt).toLocaleString('vi-VN'),
+      type: h.type,
+      item: h.ingredientName,
+      quantity: Math.abs(Number(h.changeAmount ?? 0)),
+      signedAmount: Number(h.changeAmount ?? 0),
+      unit: h.unit,
+      unitPrice: Number(h.unitPrice ?? 0),
+      totalValue: Number(h.totalValue ?? 0),
+      user: h.userName,
+      note: h.note ?? '',
+    }));
+    setHistory(mapped);
+  };
+
+  const fetchStats = async () => {
+    const res = await axiosInstance.get('/inventory/stats');
+    setStats({
+      totalItems: Number(res.data.totalItems ?? 0),
+      lowStockItems: Number(res.data.lowStockItems ?? 0),
+      importedAmountThisMonth: Number(res.data.importedAmountThisMonth ?? 0),
+      importTransactionsThisMonth: Number(res.data.importTransactionsThisMonth ?? 0),
+    });
+  };
+
+  const fetchAllInventoryData = async () => {
+    setIsLoading(true);
+    try {
+      await Promise.all([fetchInventory(), fetchHistory(), fetchStats()]);
+    } catch (err) {
+      console.error('Failed to load inventory module data', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchInventory = async () => {
-      try {
-        const res = await axiosInstance.get('/inventory');
-        const mapped = res.data.map((i: any) => ({
-          id: i.ingredientId,
-          name: i.name,
-          unit: i.unit,
-          stock: i.stockQuantity,
-          minStock: i.alertThreshold || 0,
-          status: (i.stockQuantity <= (i.alertThreshold || 0)) ? 'LOW' : 'GOOD'
-        }));
-        setInventory(mapped);
-      } catch (err) {
-        console.error("Failed to load inventory", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchInventory();
+    void fetchAllInventoryData();
   }, []);
+
+  const filteredInventory = useMemo(
+    () =>
+      inventory.filter((item) =>
+        item.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+      ),
+    [inventory, searchQuery]
+  );
+
+  const filteredHistory = useMemo(
+    () =>
+      history.filter((record) => {
+        const keyword = searchQuery.trim().toLowerCase();
+        if (!keyword) return true;
+        return (
+          record.item.toLowerCase().includes(keyword) ||
+          record.user.toLowerCase().includes(keyword) ||
+          record.note.toLowerCase().includes(keyword)
+        );
+      }),
+    [history, searchQuery]
+  );
+
+  const selectedIngredient = useMemo(
+    () => inventory.find((item) => item.id === selectedIngredientId),
+    [inventory, selectedIngredientId]
+  );
 
   const handleOpenActionModal = (type: 'IMPORT' | 'EXPORT') => {
     setActionType(type);
+    setSelectedIngredientId('');
+    setAmountInput('');
+    setUnitPriceInput('');
+    setNoteInput('');
+    setActionError('');
     setIsActionModalOpen(true);
+  };
+
+  const handleSubmitAction = async () => {
+    setActionError('');
+
+    const amount = Number(amountInput);
+    if (!selectedIngredientId) {
+      setActionError('Vui lòng chọn nguyên liệu.');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setActionError('Số lượng phải lớn hơn 0.');
+      return;
+    }
+
+    const unitPrice = Number(unitPriceInput);
+    if (actionType === 'IMPORT' && (!Number.isFinite(unitPrice) || unitPrice <= 0)) {
+      setActionError('Đơn giá nhập phải lớn hơn 0.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const endpoint = actionType === 'IMPORT' ? '/inventory/import' : '/inventory/export';
+      await axiosInstance.post(endpoint, {
+        ingredientId: selectedIngredientId,
+        amount,
+        unitPrice: actionType === 'IMPORT' ? unitPrice : undefined,
+        note: noteInput.trim() || undefined,
+      });
+
+      await Promise.all([fetchInventory(), fetchHistory(), fetchStats()]);
+      setIsActionModalOpen(false);
+    } catch (err: any) {
+      console.error('Inventory action failed', err);
+      setActionError(err?.response?.data?.message || 'Thao tác thất bại. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -49,7 +211,7 @@ export function InventoryPage() {
       className="p-6 max-w-7xl mx-auto"
     >
       <SEO title="Quản Lý Kho" description="Kiểm soát tồn kho nguyên vật liệu." />
-      
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold text-coffee-dark">Quản Lý Kho</h1>
@@ -85,7 +247,7 @@ export function InventoryPage() {
           </div>
           <div>
             <p className="text-sm text-text-muted uppercase tracking-wider font-medium">Tổng Mặt Hàng</p>
-            <p className="text-2xl font-bold text-coffee-dark">124</p>
+            <p className="text-2xl font-bold text-coffee-dark">{stats.totalItems}</p>
           </div>
         </motion.div>
         <motion.div whileHover={{ y: -4, scale: 1.01 }} className="bg-white p-6 rounded-3xl shadow-sm border border-red-100 flex items-center gap-4 hover:shadow-xl hover:shadow-red-500/10 transition-all duration-300">
@@ -94,7 +256,7 @@ export function InventoryPage() {
           </div>
           <div>
             <p className="text-sm text-text-muted uppercase tracking-wider font-medium">Sắp Hết Hàng</p>
-            <p className="text-2xl font-bold text-red-600">12</p>
+            <p className="text-2xl font-bold text-red-600">{stats.lowStockItems}</p>
           </div>
         </motion.div>
         <motion.div whileHover={{ y: -4, scale: 1.01 }} className="bg-white p-6 rounded-3xl shadow-sm border border-coffee-100 flex items-center gap-4 hover:shadow-xl hover:shadow-green-500/10 transition-all duration-300">
@@ -103,7 +265,8 @@ export function InventoryPage() {
           </div>
           <div>
             <p className="text-sm text-text-muted uppercase tracking-wider font-medium">Đã Nhập (Tháng)</p>
-            <p className="text-2xl font-bold text-coffee-dark">45.2M ₫</p>
+            <p className="text-2xl font-bold text-coffee-dark">{formatCurrency(stats.importedAmountThisMonth)}</p>
+            <p className="text-xs text-text-muted mt-1">{stats.importTransactionsThisMonth} lượt nhập</p>
           </div>
         </motion.div>
       </div>
@@ -115,9 +278,8 @@ export function InventoryPage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`pb-4 font-medium text-sm transition-colors relative ${
-                activeTab === tab ? 'text-gold' : 'text-coffee-400 hover:text-coffee-600'
-              }`}
+              className={`pb-4 font-medium text-sm transition-colors relative ${activeTab === tab ? 'text-gold' : 'text-coffee-400 hover:text-coffee-600'
+                }`}
             >
               {tab === 'STOCK' ? 'Tồn Kho Hiện Tại' : 'Lịch Sử Nhập/Xuất'}
               {activeTab === tab && (
@@ -132,7 +294,9 @@ export function InventoryPage() {
             <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-coffee-400" />
             <input
               type="text"
-              placeholder="Tìm kiếm nguyên liệu..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={activeTab === 'STOCK' ? 'Tìm kiếm nguyên liệu...' : 'Tìm theo nguyên liệu/người thao tác...'}
               className="w-full pl-12 pr-4 py-3 bg-coffee-50 border border-transparent focus:border-gold/50 focus:bg-white rounded-xl outline-none transition-all duration-300 focus:shadow-sm"
             />
           </div>
@@ -146,18 +310,22 @@ export function InventoryPage() {
                     <th className="p-4 font-medium">Đơn Vị</th>
                     <th className="p-4 font-medium">Tồn Kho</th>
                     <th className="p-4 font-medium">Định Mức Tối Thiểu</th>
+                    <th className="p-4 font-medium">Đơn Giá Bình Quân</th>
                     <th className="p-4 font-medium rounded-r-xl">Trạng Thái</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-coffee-50">
                   {isLoading ? (
-                    <tr><td colSpan={5} className="p-6 text-center text-coffee-400">Đang tải dữ liệu...</td></tr>
-                  ) : inventory.map((item) => (
+                    <tr><td colSpan={6} className="p-6 text-center text-coffee-400">Đang tải dữ liệu...</td></tr>
+                  ) : filteredInventory.length === 0 ? (
+                    <tr><td colSpan={6} className="p-6 text-center text-coffee-400">Không có dữ liệu tồn kho phù hợp.</td></tr>
+                  ) : filteredInventory.map((item) => (
                     <tr key={item.id} className="hover:bg-coffee-50/30 transition-colors">
                       <td className="p-4 font-medium text-coffee-950">{item.name}</td>
                       <td className="p-4 text-coffee-600">{item.unit}</td>
                       <td className="p-4 font-bold text-coffee-dark">{item.stock}</td>
                       <td className="p-4 text-coffee-400">{item.minStock}</td>
+                      <td className="p-4 text-coffee-600">{formatCurrency(item.unitCost)}</td>
                       <td className="p-4">
                         {item.status === 'LOW' ? (
                           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">
@@ -181,31 +349,46 @@ export function InventoryPage() {
                     <th className="p-4 font-medium">Loại</th>
                     <th className="p-4 font-medium">Nguyên Liệu</th>
                     <th className="p-4 font-medium">Số Lượng</th>
+                    <th className="p-4 font-medium">Đơn Giá</th>
+                    <th className="p-4 font-medium">Thành Tiền</th>
                     <th className="p-4 font-medium">Người Thực Hiện</th>
                     <th className="p-4 font-medium rounded-r-xl">Ghi Chú</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-coffee-50">
-                  {history.map((record) => (
+                  {isLoading ? (
+                    <tr><td colSpan={8} className="p-6 text-center text-coffee-400">Đang tải dữ liệu...</td></tr>
+                  ) : filteredHistory.length === 0 ? (
+                    <tr><td colSpan={8} className="p-6 text-center text-coffee-400">Chưa có lịch sử nhập/xuất.</td></tr>
+                  ) : filteredHistory.map((record) => (
                     <tr key={record.id} className="hover:bg-coffee-50/30 transition-colors">
                       <td className="p-4 text-coffee-600 flex items-center gap-2">
                         <Clock className="w-4 h-4" />
                         {record.date}
                       </td>
                       <td className="p-4">
-                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
-                          record.type === 'IMPORT' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                        }`}>
+                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${record.type === 'IMPORT'
+                            ? 'bg-green-100 text-green-700'
+                            : record.type === 'DEDUCT'
+                              ? 'bg-orange-100 text-orange-700'
+                              : 'bg-sky-100 text-sky-800'
+                          }`}>
                           {record.type === 'IMPORT' ? (
                             <><ArrowDownToLine className="w-3 h-3" /> Nhập</>
-                          ) : (
+                          ) : record.type === 'DEDUCT' ? (
                             <><ArrowUpFromLine className="w-3 h-3" /> Xuất</>
+                          ) : (
+                            <>Điều chỉnh</>
                           )}
                         </span>
                       </td>
                       <td className="p-4 font-medium text-coffee-950">{record.item}</td>
                       <td className="p-4 font-bold text-coffee-dark">
-                        {record.type === 'IMPORT' ? '+' : '-'}{record.quantity} {record.unit}
+                        {record.signedAmount >= 0 ? '+' : '-'}{record.quantity} {record.unit}
+                      </td>
+                      <td className="p-4 text-coffee-600">{formatCurrency(record.unitPrice)}</td>
+                      <td className={`p-4 font-medium ${record.totalValue >= 0 ? 'text-green-700' : 'text-orange-700'}`}>
+                        {formatCurrency(record.totalValue)}
                       </td>
                       <td className="p-4 text-coffee-600">{record.user}</td>
                       <td className="p-4 text-coffee-400">{record.note}</td>
@@ -244,47 +427,91 @@ export function InventoryPage() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                
+
                 <div className="space-y-4">
+                  {actionError && (
+                    <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm font-medium">
+                      {actionError}
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium text-coffee-900 mb-2">Nguyên liệu</label>
-                    <select className="block w-full pl-4 pr-4 py-3 border border-coffee-200 rounded-2xl focus:ring-2 focus:ring-gold focus:border-gold text-base bg-coffee-50/50 hover:bg-white focus:bg-white transition-all duration-300 focus:shadow-lg focus:shadow-gold/10 outline-none">
+                    <select
+                      value={selectedIngredientId}
+                      onChange={(e) => setSelectedIngredientId(e.target.value)}
+                      className="block w-full pl-4 pr-4 py-3 border border-coffee-200 rounded-2xl focus:ring-2 focus:ring-gold focus:border-gold text-base bg-coffee-50/50 hover:bg-white focus:bg-white transition-all duration-300 focus:shadow-lg focus:shadow-gold/10 outline-none"
+                    >
                       <option value="">Chọn nguyên liệu...</option>
                       {inventory.map(item => (
                         <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>
                       ))}
                     </select>
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
+
+                  <div>
                     <div>
                       <label className="block text-sm font-medium text-coffee-900 mb-2">Số lượng</label>
-                      <input type="number" className="block w-full pl-4 pr-4 py-3 border border-coffee-200 rounded-2xl focus:ring-2 focus:ring-gold focus:border-gold text-base bg-coffee-50/50 hover:bg-white focus:bg-white transition-all duration-300 focus:shadow-lg focus:shadow-gold/10 outline-none" placeholder="0" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-coffee-900 mb-2">Đơn giá (VNĐ)</label>
-                      <input type="number" className="block w-full pl-4 pr-4 py-3 border border-coffee-200 rounded-2xl focus:ring-2 focus:ring-gold focus:border-gold text-base bg-coffee-50/50 hover:bg-white focus:bg-white transition-all duration-300 focus:shadow-lg focus:shadow-gold/10 outline-none" placeholder="0" disabled={actionType === 'EXPORT'} />
+                      <input
+                        type="number"
+                        min="0.001"
+                        step="0.001"
+                        value={amountInput}
+                        onChange={(e) => setAmountInput(e.target.value)}
+                        className="block w-full pl-4 pr-4 py-3 border border-coffee-200 rounded-2xl focus:ring-2 focus:ring-gold focus:border-gold text-base bg-coffee-50/50 hover:bg-white focus:bg-white transition-all duration-300 focus:shadow-lg focus:shadow-gold/10 outline-none"
+                        placeholder="0"
+                      />
                     </div>
                   </div>
 
+                  {actionType === 'IMPORT' ? (
+                    <div>
+                      <label className="block text-sm font-medium text-coffee-900 mb-2">Đơn giá nhập (VND)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={unitPriceInput}
+                        onChange={(e) => setUnitPriceInput(e.target.value)}
+                        className="block w-full pl-4 pr-4 py-3 border border-coffee-200 rounded-2xl focus:ring-2 focus:ring-gold focus:border-gold text-base bg-coffee-50/50 hover:bg-white focus:bg-white transition-all duration-300 focus:shadow-lg focus:shadow-gold/10 outline-none"
+                        placeholder="Ví dụ: 25000"
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-coffee-50 rounded-xl text-sm text-coffee-700">
+                      Đơn giá xuất sẽ lấy theo giá vốn bình quân hiện tại:
+                      <span className="font-semibold"> {formatCurrency(selectedIngredient?.unitCost ?? 0)}</span>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium text-coffee-900 mb-2">Ghi chú</label>
-                    <textarea rows={3} className="block w-full pl-4 pr-4 py-3 border border-coffee-200 rounded-2xl focus:ring-2 focus:ring-gold focus:border-gold text-base bg-coffee-50/50 hover:bg-white focus:bg-white transition-all duration-300 focus:shadow-lg focus:shadow-gold/10 outline-none" placeholder="Lý do nhập/xuất..."></textarea>
+                    <textarea
+                      rows={3}
+                      value={noteInput}
+                      onChange={(e) => setNoteInput(e.target.value)}
+                      className="block w-full pl-4 pr-4 py-3 border border-coffee-200 rounded-2xl focus:ring-2 focus:ring-gold focus:border-gold text-base bg-coffee-50/50 hover:bg-white focus:bg-white transition-all duration-300 focus:shadow-lg focus:shadow-gold/10 outline-none"
+                      placeholder="Lý do nhập/xuất..."
+                    ></textarea>
                   </div>
                 </div>
-                
+
                 <div className="flex justify-end gap-3 mt-8">
-                  <button 
+                  <button
                     onClick={() => setIsActionModalOpen(false)}
+                    disabled={isSubmitting}
                     className="px-6 py-3 rounded-xl font-medium text-coffee-600 hover:bg-coffee-50 transition-colors"
                   >
                     Hủy
                   </button>
-                  <button 
-                    onClick={() => setIsActionModalOpen(false)}
+                  <button
+                    onClick={handleSubmitAction}
+                    disabled={isSubmitting}
                     className="px-6 py-3 rounded-xl font-medium bg-coffee-dark text-cream hover:bg-coffee-rich transition-colors shadow-lg shadow-coffee-dark/20"
                   >
-                    Xác nhận {actionType === 'IMPORT' ? 'Nhập' : 'Xuất'}
+                    {isSubmitting
+                      ? 'Đang xử lý...'
+                      : `Xác nhận ${actionType === 'IMPORT' ? 'Nhập' : 'Xuất'}`}
                   </button>
                 </div>
               </motion.div>

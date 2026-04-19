@@ -125,6 +125,7 @@ public class AppDbContext : DbContext
             e.Property(i => i.SUnit).HasColumnName("sUnit").HasMaxLength(20).IsRequired();
             e.Property(i => i.FStockQuantity).HasColumnName("fStockQuantity").HasColumnType("decimal(12,3)").HasDefaultValue(0m);
             e.Property(i => i.FAlertThreshold).HasColumnName("fAlertThreshold").HasColumnType("decimal(12,3)").HasDefaultValue(0m);
+            e.Property(i => i.FUnitCost).HasColumnName("fUnitCost").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
             e.Property(i => i.DUpdatedAt).HasColumnName("dUpdatedAt").HasDefaultValueSql("SYSDATETIME()");
             e.HasOne(i => i.Tenant).WithMany(t => t.Ingredients).HasForeignKey(i => i.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -188,6 +189,8 @@ public class AppDbContext : DbContext
             e.Property(s => s.IngredientId).HasColumnName("IngredientId");
             e.Property(s => s.OrderId).HasColumnName("OrderId");
             e.Property(s => s.FChangeAmount).HasColumnName("fChangeAmount").HasColumnType("decimal(12,3)");
+            e.Property(s => s.FUnitPrice).HasColumnName("fUnitPrice").HasColumnType("decimal(12,2)").HasDefaultValue(0m);
+            e.Property(s => s.FTotalValue).HasColumnName("fTotalValue").HasColumnType("decimal(14,2)").HasDefaultValue(0m);
             e.Property(s => s.SType).HasColumnName("sType").HasMaxLength(10).IsRequired().IsUnicode(false);
             e.Property(s => s.SNote).HasColumnName("sNote").HasMaxLength(200);
             e.Property(s => s.UserId).HasColumnName("UserId");

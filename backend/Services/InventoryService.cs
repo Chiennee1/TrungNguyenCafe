@@ -41,14 +41,31 @@ public class InventoryService : IInventoryService
             .FirstOrDefaultAsync(i => i.IngredientId == dto.IngredientId && i.TenantId == tenantId);
         if (ingredient == null) return null;
 
+        var importUnitPrice = dto.UnitPrice ?? ingredient.FUnitCost;
+        if (importUnitPrice <= 0)
+            throw new InvalidOperationException("Vui lòng nhập đơn giá hợp lệ cho lần nhập kho.");
+
+        var oldStock = ingredient.FStockQuantity;
+
         ingredient.FStockQuantity += dto.Amount;
+        ingredient.FUnitCost = oldStock <= 0
+            ? importUnitPrice
+            : Math.Round(
+                ((oldStock * ingredient.FUnitCost) + (dto.Amount * importUnitPrice)) / ingredient.FStockQuantity,
+                2,
+                MidpointRounding.AwayFromZero
+            );
         ingredient.DUpdatedAt = DateTime.UtcNow;
+
+        var totalValue = Math.Round(dto.Amount * importUnitPrice, 2, MidpointRounding.AwayFromZero);
 
         _context.StockHistories.Add(new StockHistory
         {
             TenantId = tenantId,
             IngredientId = dto.IngredientId,
             FChangeAmount = dto.Amount,
+            FUnitPrice = importUnitPrice,
+            FTotalValue = totalValue,
             SType = "IMPORT",
             SNote = dto.Note ?? "Nhập kho thủ công",
             UserId = userId
@@ -70,11 +87,16 @@ public class InventoryService : IInventoryService
         ingredient.FStockQuantity -= dto.Amount;
         ingredient.DUpdatedAt = DateTime.UtcNow;
 
+        var unitPrice = ingredient.FUnitCost;
+        var totalValue = Math.Round(dto.Amount * unitPrice, 2, MidpointRounding.AwayFromZero);
+
         _context.StockHistories.Add(new StockHistory
         {
             TenantId = tenantId,
             IngredientId = dto.IngredientId,
             FChangeAmount = -dto.Amount,
+            FUnitPrice = unitPrice,
+            FTotalValue = -totalValue,
             SType = "DEDUCT",
             SNote = dto.Note ?? "Xuất kho thủ công",
             UserId = userId
@@ -102,6 +124,8 @@ public class InventoryService : IInventoryService
                 IngredientName = s.Ingredient.SIngredientName,
                 Unit = s.Ingredient.SUnit,
                 ChangeAmount = s.FChangeAmount,
+                UnitPrice = s.FUnitPrice,
+                TotalValue = s.FTotalValue,
                 Type = s.SType,
                 Note = s.SNote,
                 UserId = s.UserId,
@@ -127,7 +151,7 @@ public class InventoryService : IInventoryService
             .Where(s => s.TenantId == tenantId && s.SType == "IMPORT" && s.DCreatedAt >= firstDayOfMonthUtc);
 
         var importedAmountThisMonth = await importQuery
-            .SumAsync(s => (decimal?)s.FChangeAmount) ?? 0m;
+            .SumAsync(s => (decimal?)s.FTotalValue) ?? 0m;
 
         var importTransactionsThisMonth = await importQuery.CountAsync();
 
@@ -148,6 +172,7 @@ public class InventoryService : IInventoryService
         Unit = i.SUnit,
         StockQuantity = i.FStockQuantity,
         AlertThreshold = i.FAlertThreshold,
+        UnitCost = i.FUnitCost,
         UpdatedAt = i.DUpdatedAt
     };
 }
