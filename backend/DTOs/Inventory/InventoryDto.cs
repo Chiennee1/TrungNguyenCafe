@@ -23,3 +23,25 @@ public class ImportStockDto
     [MaxLength(200)]
     public string? Note { get; set; }
 }
+
+public class StockHistoryResponseDto
+{
+    public Guid HistoryId { get; set; }
+    public Guid IngredientId { get; set; }
+    public string IngredientName { get; set; } = string.Empty;
+    public string Unit { get; set; } = string.Empty;
+    public decimal ChangeAmount { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public string? Note { get; set; }
+    public Guid UserId { get; set; }
+    public string UserName { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+public class InventoryStatsDto
+{
+    public int TotalItems { get; set; }
+    public int LowStockItems { get; set; }
+    public decimal ImportedAmountThisMonth { get; set; }
+    public int ImportTransactionsThisMonth { get; set; }
+}
