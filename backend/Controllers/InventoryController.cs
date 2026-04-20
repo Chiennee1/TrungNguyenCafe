@@ -17,13 +17,24 @@ public class InventoryController : ControllerBase
         _inventoryService = inventoryService;
     }
 
+    private Guid? GetScopedTenantId(out bool isUnauthorized)
+    {
+        var role = HttpContext.Items["UserRole"]?.ToString();
+        var tenantId = (Guid?)HttpContext.Items["TenantId"];
+        Guid? scopedTenantId = (role == "SYSTEM_ADMIN" || role == "CHAIN_MANAGER") ? null : tenantId;
+        
+        isUnauthorized = scopedTenantId == null && role != "SYSTEM_ADMIN" && role != "CHAIN_MANAGER";
+        return scopedTenantId;
+    }
+
     [HttpGet]
     [Authorize(Roles = "SYSTEM_ADMIN,STORE_MANAGER,FRANCHISE_OWNER,WAREHOUSE")]
     public async Task<IActionResult> GetAll()
     {
-        var tenantId = (Guid?)HttpContext.Items["TenantId"];
-        if (tenantId == null) return Unauthorized();
-        var list = await _inventoryService.GetIngredientsByTenantAsync(tenantId.Value);
+        var scopedTenantId = GetScopedTenantId(out bool isUnauthorized);
+        if (isUnauthorized) return Unauthorized();
+
+        var list = await _inventoryService.GetIngredientsByTenantAsync(scopedTenantId);
         return Ok(list);
     }
 
@@ -31,9 +42,10 @@ public class InventoryController : ControllerBase
     [Authorize(Roles = "SYSTEM_ADMIN,STORE_MANAGER,FRANCHISE_OWNER,WAREHOUSE")]
     public async Task<IActionResult> GetLowStock()
     {
-        var tenantId = (Guid?)HttpContext.Items["TenantId"];
-        if (tenantId == null) return Unauthorized();
-        var list = await _inventoryService.GetLowStockAsync(tenantId.Value);
+        var scopedTenantId = GetScopedTenantId(out bool isUnauthorized);
+        if (isUnauthorized) return Unauthorized();
+
+        var list = await _inventoryService.GetLowStockAsync(scopedTenantId);
         return Ok(list);
     }
 
@@ -85,10 +97,10 @@ public class InventoryController : ControllerBase
     [Authorize(Roles = "SYSTEM_ADMIN,STORE_MANAGER,FRANCHISE_OWNER,WAREHOUSE")]
     public async Task<IActionResult> GetHistory([FromQuery] int take = 100)
     {
-        var tenantId = (Guid?)HttpContext.Items["TenantId"];
-        if (tenantId == null) return Unauthorized();
+        var scopedTenantId = GetScopedTenantId(out bool isUnauthorized);
+        if (isUnauthorized) return Unauthorized();
 
-        var list = await _inventoryService.GetStockHistoryByTenantAsync(tenantId.Value, take);
+        var list = await _inventoryService.GetStockHistoryByTenantAsync(scopedTenantId, take);
         return Ok(list);
     }
 
@@ -96,10 +108,10 @@ public class InventoryController : ControllerBase
     [Authorize(Roles = "SYSTEM_ADMIN,STORE_MANAGER,FRANCHISE_OWNER,WAREHOUSE")]
     public async Task<IActionResult> GetStats()
     {
-        var tenantId = (Guid?)HttpContext.Items["TenantId"];
-        if (tenantId == null) return Unauthorized();
+        var scopedTenantId = GetScopedTenantId(out bool isUnauthorized);
+        if (isUnauthorized) return Unauthorized();
 
-        var stats = await _inventoryService.GetInventoryStatsAsync(tenantId.Value);
+        var stats = await _inventoryService.GetInventoryStatsAsync(scopedTenantId);
         return Ok(stats);
     }
 }

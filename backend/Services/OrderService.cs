@@ -18,10 +18,10 @@ public class OrderService : IOrderService
         _orderRepo = orderRepo;
     }
 
-    public async Task<IEnumerable<OrderResponseDto>> GetOrdersByTenantAsync(
-        Guid tenantId, DateTime? from, DateTime? to, int page, int pageSize)
+    public async Task<IEnumerable<OrderResponseDto>> GetOrdersAsync(
+        Guid? tenantId, DateTime? from, DateTime? to, byte? status, string? paymentMethod, int page, int pageSize)
     {
-        var orders = await _orderRepo.GetOrdersByTenantAsync(tenantId, from, to, page, pageSize);
+        var orders = await _orderRepo.GetOrdersAsync(tenantId, from, to, status, paymentMethod, page, pageSize);
         return orders.Select(MapToDto);
     }
 

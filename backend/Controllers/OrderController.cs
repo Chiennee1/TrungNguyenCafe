@@ -22,15 +22,27 @@ public class OrderController : ControllerBase
     public async Task<IActionResult> GetAll(
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
+        [FromQuery] byte? status,
+        [FromQuery] string? paymentMethod,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
+        var role     = HttpContext.Items["UserRole"]?.ToString();
         var tenantId = (Guid?)HttpContext.Items["TenantId"];
-        if (tenantId == null) return Unauthorized();
 
-        var orders = await _orderService.GetOrdersByTenantAsync(tenantId.Value, from, to, page, pageSize);
+        // SYSTEM_ADMIN & CHAIN_MANAGER có thể xem toàn hệ thống (scopedTenantId = null)
+        Guid? scopedTenantId = (role == "SYSTEM_ADMIN" || role == "CHAIN_MANAGER")
+            ? null
+            : tenantId;
+
+        // Các role chi nhánh phải có tenantId
+        if (scopedTenantId == null && role != "SYSTEM_ADMIN" && role != "CHAIN_MANAGER")
+            return Unauthorized();
+
+        var orders = await _orderService.GetOrdersAsync(scopedTenantId, from, to, status, paymentMethod, page, pageSize);
         return Ok(orders);
     }
+
 
     [HttpGet("status/{status}")]
     [Authorize(Roles = "STAFF_POS,BARISTA,STORE_MANAGER")]

@@ -29,7 +29,7 @@ export function Sidebar() {
     { name: 'POS Bán Hàng', path: '/pos', icon: ShoppingCart, roles: ['STAFF_POS', 'STORE_MANAGER'] },
     { name: 'Đơn Hàng', path: '/orders', icon: ReceiptText, roles: ['STORE_MANAGER', 'SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'BARISTA'] },
     { name: 'Quản Lý Menu', path: '/products', icon: Package, roles: ['STORE_MANAGER', 'SYSTEM_ADMIN'] },
-    { name: 'Kho Nguyên Liệu', path: '/inventory', icon: Store, roles: ['WAREHOUSE', 'STORE_MANAGER'] },
+    { name: 'Kho Nguyên Liệu', path: '/inventory', icon: Store, roles: ['WAREHOUSE', 'STORE_MANAGER', 'FRANCHISE_OWNER'] },
     { name: 'Báo Cáo', path: '/reports', icon: BarChart3, roles: ['SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'STORE_MANAGER'] },
     { name: 'Thông Báo', path: '/notifications', icon: Bell, roles: ['SYSTEM_ADMIN', 'CHAIN_MANAGER', 'FRANCHISE_OWNER', 'STORE_MANAGER', 'STAFF_POS', 'WAREHOUSE', 'BARISTA'] },
     { name: 'Nhân Viên', path: '/users', icon: Users, roles: ['STORE_MANAGER', 'SYSTEM_ADMIN'] },

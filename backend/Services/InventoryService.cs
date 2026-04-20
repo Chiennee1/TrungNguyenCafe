@@ -15,20 +15,24 @@ public class InventoryService : IInventoryService
         _context = context;
     }
 
-    public async Task<IEnumerable<IngredientResponseDto>> GetIngredientsByTenantAsync(Guid tenantId)
+    public async Task<IEnumerable<IngredientResponseDto>> GetIngredientsByTenantAsync(Guid? tenantId)
     {
-        var ingredients = await _context.Ingredients
-            .Where(i => i.TenantId == tenantId)
+        var query = _context.Ingredients.AsQueryable();
+        if (tenantId.HasValue) query = query.Where(i => i.TenantId == tenantId.Value);
+
+        var ingredients = await query
             .OrderBy(i => i.SIngredientName)
             .AsNoTracking()
             .ToListAsync();
         return ingredients.Select(MapToDto);
     }
 
-    public async Task<IEnumerable<IngredientResponseDto>> GetLowStockAsync(Guid tenantId)
+    public async Task<IEnumerable<IngredientResponseDto>> GetLowStockAsync(Guid? tenantId)
     {
-        var ingredients = await _context.Ingredients
-            .Where(i => i.TenantId == tenantId && i.FStockQuantity <= i.FAlertThreshold)
+        var query = _context.Ingredients.Where(i => i.FStockQuantity <= i.FAlertThreshold);
+        if (tenantId.HasValue) query = query.Where(i => i.TenantId == tenantId.Value);
+
+        var ingredients = await query
             .OrderBy(i => i.FStockQuantity)
             .AsNoTracking()
             .ToListAsync();
@@ -106,12 +110,14 @@ public class InventoryService : IInventoryService
         return MapToDto(ingredient);
     }
 
-    public async Task<IEnumerable<StockHistoryResponseDto>> GetStockHistoryByTenantAsync(Guid tenantId, int take = 100)
+    public async Task<IEnumerable<StockHistoryResponseDto>> GetStockHistoryByTenantAsync(Guid? tenantId, int take = 100)
     {
         var safeTake = Math.Clamp(take, 1, 500);
 
-        return await _context.StockHistories
-            .Where(s => s.TenantId == tenantId)
+        var query = _context.StockHistories.AsQueryable();
+        if (tenantId.HasValue) query = query.Where(s => s.TenantId == tenantId.Value);
+
+        return await query
             .Include(s => s.Ingredient)
             .Include(s => s.User)
             .OrderByDescending(s => s.DCreatedAt)
@@ -135,20 +141,19 @@ public class InventoryService : IInventoryService
             .ToListAsync();
     }
 
-    public async Task<InventoryStatsDto> GetInventoryStatsAsync(Guid tenantId)
+    public async Task<InventoryStatsDto> GetInventoryStatsAsync(Guid? tenantId)
     {
         var firstDayOfMonthUtc = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
 
-        var totalItems = await _context.Ingredients
-            .Where(i => i.TenantId == tenantId)
-            .CountAsync();
+        var itemsQuery = _context.Ingredients.AsQueryable();
+        if (tenantId.HasValue) itemsQuery = itemsQuery.Where(i => i.TenantId == tenantId.Value);
 
-        var lowStockItems = await _context.Ingredients
-            .Where(i => i.TenantId == tenantId && i.FStockQuantity <= i.FAlertThreshold)
-            .CountAsync();
+        var totalItems = await itemsQuery.CountAsync();
+        var lowStockItems = await itemsQuery.Where(i => i.FStockQuantity <= i.FAlertThreshold).CountAsync();
 
         var importQuery = _context.StockHistories
-            .Where(s => s.TenantId == tenantId && s.SType == "IMPORT" && s.DCreatedAt >= firstDayOfMonthUtc);
+            .Where(s => s.SType == "IMPORT" && s.DCreatedAt >= firstDayOfMonthUtc);
+        if (tenantId.HasValue) importQuery = importQuery.Where(s => s.TenantId == tenantId.Value);
 
         var importedAmountThisMonth = await importQuery
             .SumAsync(s => (decimal?)s.FTotalValue) ?? 0m;

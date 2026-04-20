@@ -19,15 +19,20 @@ public class OrderRepository : GenericRepository<Order>
             .FirstOrDefaultAsync(o => o.OrderId == orderId);
     }
 
-    public async Task<IEnumerable<Order>> GetOrdersByTenantAsync(Guid tenantId, DateTime? from = null, DateTime? to = null, int page = 1, int pageSize = 20)
+    public async Task<IEnumerable<Order>> GetOrdersAsync(Guid? tenantId = null, DateTime? from = null, DateTime? to = null, byte? status = null, string? paymentMethod = null, int page = 1, int pageSize = 20)
     {
         var query = _context.Orders
             .Include(o => o.Items).ThenInclude(i => i.Product)
             .Include(o => o.Customer)
-            .Where(o => o.TenantId == tenantId);
+            .Include(o => o.User)
+            .AsQueryable();
 
-        if (from.HasValue) query = query.Where(o => o.DCreatedAt >= from.Value);
-        if (to.HasValue)   query = query.Where(o => o.DCreatedAt <= to.Value);
+        // Lọc theo chi nhánh nếu không phải ADMIN (tenantId có giá trị)
+        if (tenantId.HasValue)      query = query.Where(o => o.TenantId == tenantId.Value);
+        if (from.HasValue)          query = query.Where(o => o.DCreatedAt >= from.Value);
+        if (to.HasValue)            query = query.Where(o => o.DCreatedAt <= to.Value);
+        if (status.HasValue)        query = query.Where(o => o.IStatus == status.Value);
+        if (!string.IsNullOrEmpty(paymentMethod)) query = query.Where(o => o.SPaymentMethod == paymentMethod);
 
         return await query
             .OrderByDescending(o => o.DCreatedAt)

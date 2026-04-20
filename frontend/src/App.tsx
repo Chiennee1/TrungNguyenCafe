@@ -69,7 +69,7 @@ function AnimatedRoutes() {
           } />
 
           <Route path="/inventory" element={
-            <PrivateRoute allowedRoles={['WAREHOUSE', 'STORE_MANAGER']}>
+            <PrivateRoute allowedRoles={['WAREHOUSE', 'STORE_MANAGER', 'FRANCHISE_OWNER']}>
               <InventoryPage />
             </PrivateRoute>
           } />

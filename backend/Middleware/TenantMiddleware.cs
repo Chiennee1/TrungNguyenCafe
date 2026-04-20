@@ -19,7 +19,7 @@ public class TenantMiddleware
             var roleClaim = context.User.FindFirst(ClaimTypes.Role)?.Value;
             var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            if (Guid.TryParse(tenantIdClaim, out var tenantId))
+            if (Guid.TryParse(tenantIdClaim, out var tenantId) && tenantId != Guid.Empty)
                 context.Items["TenantId"] = tenantId;
 
             if (Guid.TryParse(userIdClaim, out var userId))
